@@ -5,14 +5,13 @@ WORKDIR /app
 
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 
-# Ensure the binary is exactly where we expect it
-RUN ln -sf /usr/bin/google-chrome-stable /usr/bin/google-chrome
-
 COPY package*.json ./
 RUN npm install
 COPY . .
 
-RUN chown -R pptruser:pptruser /app
+# Ensure permissions are wide open for the binary folder
+RUN chmod -R 755 /usr/bin/
+
 USER pptruser
 
 EXPOSE 8080

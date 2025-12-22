@@ -11,9 +11,10 @@ async function startBrowser() {
     try {
         const browser = await puppeteer.launch({
             headless: "new",
-            executablePath: '/usr/bin/google-chrome-stable',
+            // Use the shortcut we just made in the Dockerfile
+            executablePath: '/usr/bin/chrome', 
             args: [
-                '--no-sandbox',
+                '--no-sandbox', 
                 '--disable-setuid-sandbox',
                 '--disable-dev-shm-usage',
                 '--single-process'

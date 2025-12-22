@@ -3,7 +3,7 @@ FROM ghcr.io/puppeteer/puppeteer:latest
 USER root
 WORKDIR /app
 
-# Stop the massive download to prevent 30-min timeout
+# Prevent the 30-minute timeout
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 
 COPY package*.json ./
@@ -11,8 +11,8 @@ RUN npm install
 
 COPY . .
 
-# Force permissions so the script can execute the browser
-RUN chmod +x /usr/bin/google-chrome-stable
+# This finds WHEREVER chrome is and creates a link to /usr/bin/chrome
+RUN ln -s $(which google-chrome-stable || which google-chrome || which chromium) /usr/bin/chrome && chmod +x /usr/bin/chrome
 
 EXPOSE 8080
 CMD ["node", "index.js"]

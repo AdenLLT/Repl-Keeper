@@ -3,13 +3,16 @@ FROM ghcr.io/puppeteer/puppeteer:latest
 USER root
 WORKDIR /app
 
-# THIS IS THE FIX: It stops the 300MB download that causes the timeout
+# Stop the massive download to prevent 30-min timeout
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 
 COPY package*.json ./
 RUN npm install
 
 COPY . .
+
+# Force permissions so the script can execute the browser
+RUN chmod +x /usr/bin/google-chrome-stable
 
 EXPOSE 8080
 CMD ["node", "index.js"]

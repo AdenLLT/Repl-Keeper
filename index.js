@@ -8,8 +8,8 @@ app.listen(8080);
 async function startBrowser() {
     const browser = await puppeteer.launch({
         headless: "new",
-        // This tells the script to use the Chrome pre-installed on the Koyeb server
-        executablePath: '/usr/bin/google-chrome', 
+        // Try this path instead - it is the standard for the official Puppeteer image
+        executablePath: '/usr/bin/google-chrome-stable', 
         args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
     const page = await browser.newPage();

@@ -6,12 +6,13 @@ app.get('/', (req, res) => res.send('Keeper is Active'));
 app.listen(8080);
 
 async function startBrowser() {
-    console.log("Launching browser using system path...");
+    console.log("Launching browser with explicit path: /usr/bin/google-chrome");
 
     try {
         const browser = await puppeteer.launch({
             headless: "new",
-            // Remove executablePath here; it will automatically use the ENV variable from Docker
+            // We are using the path your logs previously confirmed exists
+            executablePath: '/usr/bin/google-chrome', 
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
@@ -22,6 +23,7 @@ async function startBrowser() {
         });
 
         const page = await browser.newPage();
+        await page.setViewport({ width: 1280, height: 800 });
 
         await page.setCookie({
             name: 'connect.sid',
@@ -35,19 +37,19 @@ async function startBrowser() {
             timeout: 60000 
         });
 
-        console.log("SUCCESS: Replit is open and active.");
+        console.log("SUCCESS: Replit project is now open.");
 
         setInterval(async () => {
             try {
                 await page.reload({ waitUntil: 'networkidle2' });
-                console.log("Heartbeat: Session refreshed at " + new Date().toLocaleTimeString());
+                console.log("Refresh successful: " + new Date().toLocaleTimeString());
             } catch (e) {
-                console.log("Refresh failed, will retry next cycle.");
+                console.log("Refresh failed, retrying next cycle.");
             }
         }, 5 * 60 * 1000);
 
     } catch (err) {
-        console.error("CRITICAL LAUNCH ERROR:", err);
+        console.error("LAUNCH ERROR:", err);
     }
 }
 

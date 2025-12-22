@@ -8,8 +8,7 @@ app.listen(8080);
 async function startBrowser() {
     const browser = await puppeteer.launch({
         headless: "new",
-        // Try this path instead - it is the standard for the official Puppeteer image
-        executablePath: '/usr/bin/google-chrome-stable', 
+        executablePath: require('child_process').execSync('which google-chrome-stable || which google-chrome').toString().trim(),
         args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
     const page = await browser.newPage();

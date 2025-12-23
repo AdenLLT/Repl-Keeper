@@ -30,28 +30,94 @@ async function clickRunButton(page) {
     try {
         console.log("Searching for run button...");
 
+        // Get detailed info about all buttons and SVGs
+        const pageAnalysis = await page.evaluate(() => {
+            const allButtons = document.querySelectorAll('button');
+            const buttonDetails = [];
+
+            allButtons.forEach((button, index) => {
+                const svg = button.querySelector('svg');
+                const paths = button.querySelectorAll('path');
+
+                const pathInfo = [];
+                paths.forEach(path => {
+                    const d = path.getAttribute('d');
+                    pathInfo.push({
+                        d: d ? d.substring(0, 100) : null,
+                        fillRule: path.getAttribute('fill-rule'),
+                        clipRule: path.getAttribute('clip-rule')
+                    });
+                });
+
+                buttonDetails.push({
+                    index,
+                    dataCy: button.getAttribute('data-cy'),
+                    ariaLabel: button.getAttribute('aria-label'),
+                    className: button.className,
+                    hasSvg: !!svg,
+                    svgFill: svg ? svg.getAttribute('fill') : null,
+                    pathCount: paths.length,
+                    paths: pathInfo
+                });
+            });
+
+            return {
+                totalButtons: allButtons.length,
+                buttons: buttonDetails
+            };
+        });
+
+        console.log("\n=== PAGE ANALYSIS ===");
+        console.log("Total buttons:", pageAnalysis.totalButtons);
+        console.log("\n=== ALL BUTTONS ===");
+        pageAnalysis.buttons.forEach((btn, i) => {
+            console.log(`\nButton ${i}:`);
+            console.log("  data-cy:", btn.dataCy);
+            console.log("  aria-label:", btn.ariaLabel);
+            console.log("  has SVG:", btn.hasSvg);
+            if (btn.hasSvg) {
+                console.log("  SVG fill:", btn.svgFill);
+                console.log("  Path count:", btn.pathCount);
+                btn.paths.forEach((path, pi) => {
+                    console.log(`  Path ${pi}:`);
+                    console.log("    d:", path.d);
+                    console.log("    fill-rule:", path.fillRule);
+                });
+            }
+        });
+        console.log("\n=== END ANALYSIS ===\n");
+
         // Search for the button by finding the SVG with the play icon path
         const buttonFound = await page.evaluate(() => {
-            // Find all buttons on the page
             const allButtons = document.querySelectorAll('button');
 
             for (let button of allButtons) {
-                // Look for the play icon SVG path inside the button
-                const playPath = button.querySelector('path[d="M20.593 10.91a1.25 1.25 0 0 1 0 2.18l-14.48 8.145a1.25 1.25 0 0 1-1.863-1.09V3.855a1.25 1.25 0 0 1 1.863-1.09l14.48 8.146Z"]');
+                const paths = button.querySelectorAll('path');
 
-                if (playPath) {
-                    // Found the play button (Replit is stopped)
-                    button.setAttribute('data-found', 'play-button');
-                    return { found: true, type: 'play', dataCy: button.getAttribute('data-cy') };
-                }
+                for (let path of paths) {
+                    const d = path.getAttribute('d');
 
-                // Look for the stop icon SVG path inside the button
-                const stopPath = button.querySelector('path[d="M3.25 6A2.75 2.75 0 0 1 6 3.25h12A2.75 2.75 0 0 1 20.75 6v12A2.75 2.75 0 0 1 18 20.75H6A2.75 2.75 0 0 1 3.25 18V6Z"]');
+                    // Check if this is the play icon
+                    if (d && d.includes('20.593') && d.includes('10.91')) {
+                        button.setAttribute('data-found', 'play-button');
+                        return { 
+                            found: true, 
+                            type: 'play', 
+                            dataCy: button.getAttribute('data-cy'),
+                            ariaLabel: button.getAttribute('aria-label')
+                        };
+                    }
 
-                if (stopPath) {
-                    // Found the stop button (Replit is running)
-                    button.setAttribute('data-found', 'stop-button');
-                    return { found: true, type: 'stop', dataCy: button.getAttribute('data-cy') };
+                    // Check if this is the stop icon
+                    if (d && d.includes('3.25 6') && d.includes('2.75')) {
+                        button.setAttribute('data-found', 'stop-button');
+                        return { 
+                            found: true, 
+                            type: 'stop', 
+                            dataCy: button.getAttribute('data-cy'),
+                            ariaLabel: button.getAttribute('aria-label')
+                        };
+                    }
                 }
             }
 
@@ -67,13 +133,9 @@ async function clickRunButton(page) {
 
         if (buttonFound.type === 'play') {
             console.log("✓ PLAY button found - Replit is STOPPED. Clicking to START...");
-
-            // Click the button we marked
             await page.click('button[data-found="play-button"]');
-
             console.log("✓ Run button clicked successfully!");
             await page.waitForTimeout(3000);
-
         } else if (buttonFound.type === 'stop') {
             console.log("→ STOP button found - Replit is already RUNNING. No action needed.");
         }
@@ -151,7 +213,9 @@ async function startBrowser() {
             return {
                 url: window.location.href,
                 title: document.title,
-                buttonCount: document.querySelectorAll('button').length
+                buttonCount: document.querySelectorAll('button').length,
+                svgCount: document.querySelectorAll('svg').length,
+                pathCount: document.querySelectorAll('path').length
             };
         });
         console.log("Page Info:", JSON.stringify(pageInfo, null, 2));

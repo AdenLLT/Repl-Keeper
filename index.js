@@ -64,12 +64,12 @@ async function clickRunButton(page) {
         }
 
         if (buttonStatus.isPlayIcon) {
-            console.log("✓ Replit is STOPPED (Play icon detected with fill:", buttonStatus.svgFill + "). Clicking RUN button...");
+            console.log("✓ Replit is STOPPED (Play icon detected). Clicking RUN button...");
             await page.click('button[data-cy="ws-run-btn"]');
             console.log("✓ Run button clicked successfully!");
             await page.waitForTimeout(2000);
         } else if (buttonStatus.isStopIcon) {
-            console.log("→ Replit is RUNNING (Stop icon detected with fill:", buttonStatus.svgFill + "). No action needed.");
+            console.log("→ Replit is RUNNING (Stop icon detected). No action needed.");
         } else {
             console.log("? Unknown button state. SVG fill:", buttonStatus.svgFill);
         }
@@ -91,7 +91,8 @@ async function startBrowser() {
                 '--disable-setuid-sandbox',
                 '--disable-dev-shm-usage',
                 '--single-process',
-                '--no-zygote'
+                '--no-zygote',
+                '--disable-blink-features=AutomationControlled'
             ]
         });
 
@@ -105,22 +106,55 @@ async function startBrowser() {
         // Set user agent to look more like a real browser
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
+        // Hide webdriver property
+        await page.evaluateOnNewDocument(() => {
+            Object.defineProperty(navigator, 'webdriver', {
+                get: () => false,
+            });
+        });
+
         await page.setCookie({
             name: 'connect.sid',
             value: 'eyJhbGciOiJSUzI1NiIsImtpZCI6ImM0MTZJUSJ9.eyJpc3MiOiJodHRwczovL3Nlc3Npb24uZmlyZWJhc2UuZ29vZ2xlLmNvbS9yZXBsaXQtd2ViIiwicm9sZXMiOltdLCJhdWQiOiJyZXBsaXQtd2ViIiwiYXV0aF90aW1lIjoxNzY2MjI5MzE4LCJ1c2VyX2lkIjoiNmpLSXNXVjBLdmhNT2Z5OE53VmlHMXJOaDVCMyIsInN1YiI6IjZqS0lzV1YwS3ZoTU9meThOd1ZpRzFyTmg1QjMiLCJpYXQiOjE3NjYzMDc2NTAsImV4cCI6MTc2NjkxMjQ1MCwiZW1haWwiOiJhZGVuZ3JlZW4xMTFAZ21haWwuY29tIiwiZW1haWxfdmVyaWZpZWQiOnRydWUsImZpcmViYXNlIjp7ImlkZW50aXRpZXMiOnsiZ29vZ2xlLmNvbSI6WyIxMDExNzQ4Nzk3NjkxOTEyMDU2NzIiXSwiZW1haWwiOlsiYWRlbmdyZWVuMTExQGdtYWlsLmNvbSJdfSwic2lnbl9pbl9wcm92aWRlciI6Imdvb2dsZS5jb20ifX0.nXS6PDeDR7neFaIVVRjuPJSN2Aa8mXY-7vGVNx0lQsfXgZ_AhzWfuh4xinn-QV9W0SOXJrOc4HBRU08-ubHSv4AwMMMJ2ERpQCNDnVwL99DsbB8jFznWVPYgAADzb5ZHM3FFXPzOe0JoxQ33eSa2EA85-o0q7wOmOZjvfo2FunPiNU95EvzezVbAHL_WPN4TBmcuUZtCsnn-mZkeMOkc6wUUXsJkruACQXlZ-MmIzf9Alq_7B70ilCQX9T8j19yysC0NMIGbjNRHw01bW0ThLnemN89meaOJ_zqfv3FentiXFuQ7SKlpofcQC66sm4C2IPL1j--ByAQPxyJy_JwhaA',
-            domain: 'replit.com'
+            domain: 'replit.com',
+            path: '/',
+            httpOnly: true,
+            secure: true
         });
 
         console.log("Navigating to Replit...");
-        await page.goto('https://replit.com/@HUDV1/mb#main.py', { 
-            waitUntil: 'networkidle2',
-            timeout: 60000 
-        });
 
-        console.log("SUCCESS: Replit project loaded.");
+        // Try navigation with retry logic
+        let navigationSuccess = false;
+        let attempts = 0;
+        const maxAttempts = 3;
+
+        while (!navigationSuccess && attempts < maxAttempts) {
+            try {
+                attempts++;
+                console.log(`Navigation attempt ${attempts}/${maxAttempts}...`);
+
+                await page.goto('https://replit.com/@HUDV1/mb#main.py', { 
+                    waitUntil: 'domcontentloaded', // Changed from networkidle2 to be less strict
+                    timeout: 90000 
+                });
+
+                navigationSuccess = true;
+                console.log("SUCCESS: Replit project loaded.");
+
+            } catch (navError) {
+                console.log(`Navigation attempt ${attempts} failed:`, navError.message);
+                if (attempts < maxAttempts) {
+                    console.log("Retrying in 5 seconds...");
+                    await page.waitForTimeout(5000);
+                } else {
+                    throw navError;
+                }
+            }
+        }
 
         // Wait a bit more for dynamic content to load
-        await page.waitForTimeout(5000);
+        await page.waitForTimeout(8000);
 
         // Check and click run button if needed after page loads
         await clickRunButton(page);
@@ -129,11 +163,11 @@ async function startBrowser() {
         setInterval(async () => {
             try {
                 console.log("Refreshing page...");
-                await page.reload({ waitUntil: 'networkidle2' });
+                await page.reload({ waitUntil: 'domcontentloaded', timeout: 90000 });
                 console.log("Refresh successful: " + new Date().toLocaleTimeString());
 
                 // Wait for dynamic content after refresh
-                await page.waitForTimeout(5000);
+                await page.waitForTimeout(8000);
 
                 // Check and click run button if needed after refresh
                 await clickRunButton(page);
@@ -145,6 +179,13 @@ async function startBrowser() {
     } catch (err) {
         console.error("LAUNCH ERROR:", err.message);
         console.log("Full Error Stack:", err.stack);
+        console.log("Will retry in 30 seconds...");
+
+        // Retry the entire browser startup after 30 seconds
+        setTimeout(() => {
+            console.log("Retrying browser startup...");
+            startBrowser();
+        }, 30000);
     }
 }
 

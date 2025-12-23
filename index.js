@@ -30,94 +30,25 @@ async function clickRunButton(page) {
     try {
         console.log("Searching for run button...");
 
-        // Get detailed info about all buttons and SVGs
-        const pageAnalysis = await page.evaluate(() => {
-            const allButtons = document.querySelectorAll('button');
-            const buttonDetails = [];
-
-            allButtons.forEach((button, index) => {
-                const svg = button.querySelector('svg');
-                const paths = button.querySelectorAll('path');
-
-                const pathInfo = [];
-                paths.forEach(path => {
-                    const d = path.getAttribute('d');
-                    pathInfo.push({
-                        d: d ? d.substring(0, 100) : null,
-                        fillRule: path.getAttribute('fill-rule'),
-                        clipRule: path.getAttribute('clip-rule')
-                    });
-                });
-
-                buttonDetails.push({
-                    index,
-                    dataCy: button.getAttribute('data-cy'),
-                    ariaLabel: button.getAttribute('aria-label'),
-                    className: button.className,
-                    hasSvg: !!svg,
-                    svgFill: svg ? svg.getAttribute('fill') : null,
-                    pathCount: paths.length,
-                    paths: pathInfo
-                });
-            });
-
-            return {
-                totalButtons: allButtons.length,
-                buttons: buttonDetails
-            };
-        });
-
-        console.log("\n=== PAGE ANALYSIS ===");
-        console.log("Total buttons:", pageAnalysis.totalButtons);
-        console.log("\n=== ALL BUTTONS ===");
-        pageAnalysis.buttons.forEach((btn, i) => {
-            console.log(`\nButton ${i}:`);
-            console.log("  data-cy:", btn.dataCy);
-            console.log("  aria-label:", btn.ariaLabel);
-            console.log("  has SVG:", btn.hasSvg);
-            if (btn.hasSvg) {
-                console.log("  SVG fill:", btn.svgFill);
-                console.log("  Path count:", btn.pathCount);
-                btn.paths.forEach((path, pi) => {
-                    console.log(`  Path ${pi}:`);
-                    console.log("    d:", path.d);
-                    console.log("    fill-rule:", path.fillRule);
-                });
-            }
-        });
-        console.log("\n=== END ANALYSIS ===\n");
-
         // Search for the button by finding the SVG with the play icon path
         const buttonFound = await page.evaluate(() => {
             const allButtons = document.querySelectorAll('button');
 
             for (let button of allButtons) {
-                const paths = button.querySelectorAll('path');
+                // Look for the play icon SVG path inside the button
+                const playPath = button.querySelector('path[d="M20.593 10.91a1.25 1.25 0 0 1 0 2.18l-14.48 8.145a1.25 1.25 0 0 1-1.863-1.09V3.855a1.25 1.25 0 0 1 1.863-1.09l14.48 8.146Z"]');
 
-                for (let path of paths) {
-                    const d = path.getAttribute('d');
+                if (playPath) {
+                    button.setAttribute('data-found', 'play-button');
+                    return { found: true, type: 'play', dataCy: button.getAttribute('data-cy') };
+                }
 
-                    // Check if this is the play icon
-                    if (d && d.includes('20.593') && d.includes('10.91')) {
-                        button.setAttribute('data-found', 'play-button');
-                        return { 
-                            found: true, 
-                            type: 'play', 
-                            dataCy: button.getAttribute('data-cy'),
-                            ariaLabel: button.getAttribute('aria-label')
-                        };
-                    }
+                // Look for the stop icon SVG path inside the button
+                const stopPath = button.querySelector('path[d="M3.25 6A2.75 2.75 0 0 1 6 3.25h12A2.75 2.75 0 0 1 20.75 6v12A2.75 2.75 0 0 1 18 20.75H6A2.75 2.75 0 0 1 3.25 18V6Z"]');
 
-                    // Check if this is the stop icon
-                    if (d && d.includes('3.25 6') && d.includes('2.75')) {
-                        button.setAttribute('data-found', 'stop-button');
-                        return { 
-                            found: true, 
-                            type: 'stop', 
-                            dataCy: button.getAttribute('data-cy'),
-                            ariaLabel: button.getAttribute('aria-label')
-                        };
-                    }
+                if (stopPath) {
+                    button.setAttribute('data-found', 'stop-button');
+                    return { found: true, type: 'stop', dataCy: button.getAttribute('data-cy') };
                 }
             }
 
@@ -202,23 +133,32 @@ async function startBrowser() {
             waitUntil: 'domcontentloaded',
             timeout: 90000 
         });
-        console.log("✓ Project page loaded with authentication");
+        console.log("✓ Initial page loaded");
 
-        // Wait for the page to fully load and render
-        console.log("Waiting for page to fully render...");
-        await page.waitForTimeout(10000);
+        // STEP 4: Wait for the workspace to actually load (not just the loading screen)
+        console.log("STEP 4: Waiting for workspace to fully load...");
 
-        // Log page info to verify we're logged in
+        // Wait for the loading animation to disappear and actual content to appear
+        await page.waitForFunction(() => {
+            // Check if we're past the loading screen by looking for workspace elements
+            const title = document.title;
+            return title !== 'Loading... - Replit' && title.includes('Replit');
+        }, { timeout: 120000 });
+
+        console.log("✓ Workspace loaded!");
+
+        // Wait an additional moment for UI to stabilize
+        await page.waitForTimeout(5000);
+
+        // Log page info
         const pageInfo = await page.evaluate(() => {
             return {
                 url: window.location.href,
                 title: document.title,
-                buttonCount: document.querySelectorAll('button').length,
-                svgCount: document.querySelectorAll('svg').length,
-                pathCount: document.querySelectorAll('path').length
+                buttonCount: document.querySelectorAll('button').length
             };
         });
-        console.log("Page Info:", JSON.stringify(pageInfo, null, 2));
+        console.log("Workspace Info:", JSON.stringify(pageInfo, null, 2));
 
         // Check and click run button
         await clickRunButton(page);
@@ -230,7 +170,13 @@ async function startBrowser() {
                 await page.reload({ waitUntil: 'domcontentloaded', timeout: 90000 });
                 console.log("✓ Page refreshed");
 
-                await page.waitForTimeout(10000);
+                // Wait for workspace to load after refresh
+                await page.waitForFunction(() => {
+                    const title = document.title;
+                    return title !== 'Loading... - Replit' && title.includes('Replit');
+                }, { timeout: 120000 });
+
+                await page.waitForTimeout(5000);
                 await clickRunButton(page);
             } catch (e) {
                 console.log("✗ Refresh failed:", e.message);

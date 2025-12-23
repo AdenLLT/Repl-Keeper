@@ -86,37 +86,54 @@ async function startBrowser() {
             console.log("✓ Created user data directory:", userDataDir);
         }
 
+        // Path to save/load cookies
+        const cookiesPath = path.join(__dirname, 'replit_cookies.json');
+
         const browser = await puppeteer.launch({
-            headless: false, // ⚠️ Set to FALSE so you can log in manually the first time
+            headless: "new",
             executablePath: chromePath,
-            userDataDir: userDataDir, // This preserves login session
+            userDataDir: userDataDir,
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
                 '--disable-dev-shm-usage',
+                '--single-process',
+                '--no-zygote',
                 '--disable-blink-features=AutomationControlled',
                 '--disable-web-security',
                 '--disable-features=IsolateOrigins,site-per-process'
             ]
         });
 
-        console.log("✓ Browser launched with persistent session!");
+        console.log("✓ Browser launched!");
 
-        const pages = await browser.pages();
-        const page = pages[0] || await browser.newPage();
+        const page = await browser.newPage();
 
         await page.setViewport({ width: 1920, height: 1080 });
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
-        console.log("\n========================================");
-        console.log("FIRST TIME SETUP INSTRUCTIONS:");
-        console.log("========================================");
-        console.log("1. A Chrome window will open");
-        console.log("2. Manually log into Replit in that window");
-        console.log("3. Navigate to your project: https://replit.com/@HUDV1/mb#main.py");
-        console.log("4. Once logged in, the script will take over");
-        console.log("5. After first login, you can set headless: true");
-        console.log("========================================\n");
+        await page.evaluateOnNewDocument(() => {
+            Object.defineProperty(navigator, 'webdriver', {
+                get: () => false,
+            });
+        });
+
+        // Load saved cookies if they exist
+        if (fs.existsSync(cookiesPath)) {
+            console.log("Loading saved cookies...");
+            const cookiesString = fs.readFileSync(cookiesPath, 'utf8');
+            const cookies = JSON.parse(cookiesString);
+            await page.setCookie(...cookies);
+            console.log(`✓ Loaded ${cookies.length} saved cookies`);
+        } else {
+            console.log("⚠️  No saved cookies found. You need to export cookies from your browser.");
+            console.log("\nTO EXPORT COOKIES:");
+            console.log("1. Install 'EditThisCookie' or 'Cookie-Editor' browser extension");
+            console.log("2. Go to replit.com and log in");
+            console.log("3. Click the extension and export all cookies as JSON");
+            console.log("4. Save the JSON to 'replit_cookies.json' in your project folder");
+            console.log("5. Re-run this script\n");
+        }
 
         // Navigate to the Replit project
         console.log("Navigating to Replit project...");
@@ -126,35 +143,21 @@ async function startBrowser() {
         });
         console.log("✓ Page loaded");
 
-        // Wait a bit for any redirects or page loads
+        // Wait for page to stabilize
         await page.waitForTimeout(5000);
 
         // Check if logged in
         const isLoggedIn = await logPageText(page);
 
-        if (!isLoggedIn) {
-            console.log("\n⚠️  NOT LOGGED IN");
-            console.log("Please log in manually in the browser window that opened.");
-            console.log("Once you're logged in and see your workspace, the script will continue automatically.\n");
-
-            // Wait for user to log in (check every 10 seconds)
-            let attempts = 0;
-            while (!isLoggedIn && attempts < 60) { // Wait up to 10 minutes
-                await page.waitForTimeout(10000);
-                attempts++;
-                const checkLoggedIn = await page.evaluate(() => {
-                    const hasLoginButton = Array.from(document.querySelectorAll('button')).some(b => 
-                        b.innerText.includes('Log in') || b.innerText.includes('Create account')
-                    );
-                    return !hasLoginButton;
-                });
-
-                if (checkLoggedIn) {
-                    console.log("✓ Login detected! Continuing...");
-                    await logPageText(page);
-                    break;
-                }
-            }
+        if (isLoggedIn) {
+            // Save cookies for next time
+            console.log("✓ Logged in successfully! Saving cookies...");
+            const cookies = await page.cookies();
+            fs.writeFileSync(cookiesPath, JSON.stringify(cookies, null, 2));
+            console.log(`✓ Saved ${cookies.length} cookies for future use`);
+        } else {
+            console.log("\n✗ NOT LOGGED IN");
+            console.log("Please export cookies from your browser and save to 'replit_cookies.json'\n");
         }
 
         // Refresh every 5 minutes
@@ -165,7 +168,13 @@ async function startBrowser() {
                 console.log("✓ Page refreshed");
 
                 await page.waitForTimeout(5000);
-                await logPageText(page);
+                const stillLoggedIn = await logPageText(page);
+
+                if (stillLoggedIn) {
+                    // Update saved cookies
+                    const cookies = await page.cookies();
+                    fs.writeFileSync(cookiesPath, JSON.stringify(cookies, null, 2));
+                }
             } catch (e) {
                 console.log("✗ Refresh failed:", e.message);
             }

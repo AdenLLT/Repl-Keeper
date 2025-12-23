@@ -27,6 +27,52 @@ function findChrome() {
     throw new Error('Chrome executable not found');
 }
 
+async function clickRunButtonIfPresent(page) {
+    try {
+        const runButtonClicked = await page.evaluate(() => {
+            // Look for the Run button using multiple selectors
+            const buttons = Array.from(document.querySelectorAll('button'));
+
+            // Find Run button by checking for the specific SVG path or button text
+            const runButton = buttons.find(button => {
+                const svg = button.querySelector('svg');
+                const path = button.querySelector('path[d*="M20.593 10.91"]');
+                const hasRunText = button.innerText.toLowerCase().includes('run');
+                const hasPlayIcon = svg && svg.querySelector('path[fill-rule="evenodd"]');
+
+                return path || hasRunText || hasPlayIcon;
+            });
+
+            if (runButton) {
+                console.log('RUN BUTTON FOUND - CLICKING NOW!');
+                runButton.click();
+                return true;
+            }
+            return false;
+        });
+
+        if (runButtonClicked) {
+            console.log('✓ RUN BUTTON CLICKED!');
+            return true;
+        }
+        return false;
+    } catch (error) {
+        console.log("Error checking for Run button:", error.message);
+        return false;
+    }
+}
+
+async function monitorForRunButton(page) {
+    // Check for Run button every 2 seconds
+    setInterval(async () => {
+        try {
+            await clickRunButtonIfPresent(page);
+        } catch (error) {
+            console.log("Error in Run button monitor:", error.message);
+        }
+    }, 2000);
+}
+
 async function logPageText(page) {
     try {
         console.log("\n========================================");
@@ -155,6 +201,14 @@ async function startBrowser() {
             const cookies = await page.cookies();
             fs.writeFileSync(cookiesPath, JSON.stringify(cookies, null, 2));
             console.log(`✓ Saved ${cookies.length} cookies for future use`);
+
+            // Start monitoring for Run button
+            console.log("\n🔍 Starting Run button monitor...");
+            monitorForRunButton(page);
+
+            // Also check immediately after page loads
+            await page.waitForTimeout(3000);
+            await clickRunButtonIfPresent(page);
         } else {
             console.log("\n✗ NOT LOGGED IN");
             console.log("Please export cookies from your browser and save to 'replit_cookies.json'\n");
@@ -174,6 +228,10 @@ async function startBrowser() {
                     // Update saved cookies
                     const cookies = await page.cookies();
                     fs.writeFileSync(cookiesPath, JSON.stringify(cookies, null, 2));
+
+                    // Check for Run button after refresh
+                    await page.waitForTimeout(3000);
+                    await clickRunButtonIfPresent(page);
                 }
             } catch (e) {
                 console.log("✗ Refresh failed:", e.message);

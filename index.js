@@ -1,6 +1,7 @@
 const puppeteer = require('puppeteer-core');
 const express = require('express');
 const fs = require('fs');
+const path = require('path');
 const app = express();
 
 app.get('/', (req, res) => res.send('Keeper is Active'));
@@ -36,13 +37,19 @@ async function logPageText(page) {
             // Get all text content from the body
             const bodyText = document.body.innerText;
 
+            // Check if we're logged in
+            const hasLoginButton = Array.from(document.querySelectorAll('button')).some(b => 
+                b.innerText.includes('Log in') || b.innerText.includes('Create account')
+            );
+
             // Also get some structural information
             const info = {
                 title: document.title,
                 url: window.location.href,
+                loggedIn: !hasLoginButton,
                 headings: Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, h6')).map(h => h.innerText.trim()).filter(Boolean),
-                buttons: Array.from(document.querySelectorAll('button')).map(b => b.innerText.trim() || b.getAttribute('aria-label') || '[No text]').filter(Boolean).slice(0, 20), // First 20 buttons
-                links: Array.from(document.querySelectorAll('a')).map(a => a.innerText.trim()).filter(Boolean).slice(0, 20), // First 20 links
+                buttons: Array.from(document.querySelectorAll('button')).map(b => b.innerText.trim() || b.getAttribute('aria-label') || '[No text]').filter(Boolean).slice(0, 20),
+                links: Array.from(document.querySelectorAll('a')).map(a => a.innerText.trim()).filter(Boolean).slice(0, 20),
                 bodyText: bodyText
             };
 
@@ -51,6 +58,7 @@ async function logPageText(page) {
 
         console.log("PAGE TITLE:", textContent.title);
         console.log("PAGE URL:", textContent.url);
+        console.log("LOGGED IN:", textContent.loggedIn ? "✓ YES" : "✗ NO");
         console.log("\nHEADINGS:", textContent.headings.length > 0 ? textContent.headings.join(', ') : 'None found');
         console.log("\nBUTTONS (first 20):", textContent.buttons.length > 0 ? textContent.buttons.join(' | ') : 'None found');
         console.log("\nLINKS (first 20):", textContent.links.length > 0 ? textContent.links.join(' | ') : 'None found');
@@ -58,87 +66,96 @@ async function logPageText(page) {
         console.log(textContent.bodyText);
         console.log("\n========================================\n");
 
+        return textContent.loggedIn;
+
     } catch (error) {
         console.log("Error logging page text:", error.message);
+        return false;
     }
 }
 
 async function startBrowser() {
-    console.log("Starting browser with explicit path...");
+    console.log("Starting browser with persistent session...");
     try {
         const chromePath = findChrome();
 
+        // Create a persistent user data directory
+        const userDataDir = path.join(__dirname, 'chrome_user_data');
+        if (!fs.existsSync(userDataDir)) {
+            fs.mkdirSync(userDataDir, { recursive: true });
+            console.log("✓ Created user data directory:", userDataDir);
+        }
+
         const browser = await puppeteer.launch({
-            headless: "new",
+            headless: false, // ⚠️ Set to FALSE so you can log in manually the first time
             executablePath: chromePath,
+            userDataDir: userDataDir, // This preserves login session
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
                 '--disable-dev-shm-usage',
-                '--single-process',
-                '--no-zygote',
-                '--disable-blink-features=AutomationControlled'
+                '--disable-blink-features=AutomationControlled',
+                '--disable-web-security',
+                '--disable-features=IsolateOrigins,site-per-process'
             ]
         });
 
-        console.log("Browser launched successfully!");
+        console.log("✓ Browser launched with persistent session!");
 
-        const page = await browser.newPage();
+        const pages = await browser.pages();
+        const page = pages[0] || await browser.newPage();
 
         await page.setViewport({ width: 1920, height: 1080 });
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
-        await page.evaluateOnNewDocument(() => {
-            Object.defineProperty(navigator, 'webdriver', {
-                get: () => false,
-            });
-        });
+        console.log("\n========================================");
+        console.log("FIRST TIME SETUP INSTRUCTIONS:");
+        console.log("========================================");
+        console.log("1. A Chrome window will open");
+        console.log("2. Manually log into Replit in that window");
+        console.log("3. Navigate to your project: https://replit.com/@HUDV1/mb#main.py");
+        console.log("4. Once logged in, the script will take over");
+        console.log("5. After first login, you can set headless: true");
+        console.log("========================================\n");
 
-        // STEP 1: Go to replit.com first to establish the domain
-        console.log("STEP 1: Visiting replit.com to establish domain...");
-        await page.goto('https://replit.com/@HUDV1/mb#main.py', { 
-            waitUntil: 'domcontentloaded',
-            timeout: 60000 
-        });
-        console.log("✓ Domain established");
-
-        // STEP 2: Now set the cookies
-        console.log("STEP 2: Setting authentication cookies...");
-        await page.setCookie({
-            name: 'connect.sid',
-            value: 'eyJhbGciOiJSUzI1NiIsImtpZCI6ImM0MTZJUSJ9.eyJpc3MiOiJodHRwczovL3Nlc3Npb24uZmlyZWJhc2UuZ29vZ2xlLmNvbS9yZXBsaXQtd2ViIiwibmFtZSI6IlNwaWtlQ29uZXoiLCJwaWN0dXJlIjoiaHR0cHM6Ly9saDMuZ29vZ2xldXNlcmNvbnRlbnQuY29tL2EvQUNnOG9jSmlXVVdIdlRoN0MycmVSOExMZVhUbDJ3eVdmbjA2QnVWRnFpTGF4YXUxYi1ITUJnXHUwMDNkczk2LWMiLCJhdWQiOiJyZXBsaXQtd2ViIiwiYXV0aF90aW1lIjoxNzY2MjI4NTg4LCJ1c2VyX2lkIjoiMFo5SW44OFk4ZGNWQXZxamR6ZTRRQk1qNGhEMyIsInN1YiI6IjBaOUluODhZOGRjVkF2cWpkemU0UUJNajRoRDMiLCJpYXQiOjE3NjY0NzQ0NjAsImV4cCI6MTc2NzA3OTI2MCwiZW1haWwiOiJzcGlrZWNvbmV6QGdtYWlsLmNvbSIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlLCJmaXJlYmFzZSI6eyJpZGVudGl0aWVzIjp7Imdvb2dsZS5jb20iOlsiMTAxNzQwMTYyMzg3MTE0ODcyNjIyIl0sImVtYWlsIjpbInNwaWtlY29uZXpAZ21haWwuY29tIl19LCJzaWduX2luX3Byb3ZpZGVyIjoiZ29vZ2xlLmNvbSJ9fQ.GTBWu9DUVVwhc3M-1Z_sp4cwb69El2vDhz5CrCy0qBOj4VhZZXpHA5J0Ok49tun8SZJx3U-Fm3aCLfZSEZeq4I8YCNQRiJrTynDOlUAQUL0NWsburiOC8yiKxTU7Axpy-uf6RhhMYwvP0d9ITg7DgWZXmGThysAgZX0ZGuvyETEwIkmQ2xAxDPGmmcf4r5X9wQdgXUGluwwukjuoXNHT_yZ3OxrnrlLew_y0M1WD3HJ5RJQirCF1CROshayqJjPrJ3__QUUqf09IlfvrtrmRUNWzDbfzGDGWrB3HYm6LR8KbPDKAH0CH0-GD5kklOlmjiEPsIB0WMGp6yrIKyOU57g',
-            domain: 'replit.com',
-            path: '/',
-            httpOnly: true,
-            secure: true
-        });
-        console.log("✓ Cookies set");
-
-        // STEP 3: Now navigate to your specific Replit project WITH the cookies
-        console.log("STEP 3: Navigating to your Replit project with authentication...");
+        // Navigate to the Replit project
+        console.log("Navigating to Replit project...");
         await page.goto('https://replit.com/@HUDV1/mb#main.py', { 
             waitUntil: 'domcontentloaded',
             timeout: 90000 
         });
-        console.log("✓ Initial page loaded");
+        console.log("✓ Page loaded");
 
-        // STEP 4: Wait for the workspace to actually load (not just the loading screen)
-        console.log("STEP 4: Waiting for workspace to fully load...");
-
-        // Wait for the loading animation to disappear and actual content to appear
-        await page.waitForFunction(() => {
-            // Check if we're past the loading screen by looking for workspace elements
-            const title = document.title;
-            return title !== 'Loading... - Replit' && title.includes('Replit');
-        }, { timeout: 120000 });
-
-        console.log("✓ Workspace loaded!");
-
-        // Wait an additional moment for UI to stabilize
+        // Wait a bit for any redirects or page loads
         await page.waitForTimeout(5000);
 
-        // Log all visible text on the workspace
-        await logPageText(page);
+        // Check if logged in
+        const isLoggedIn = await logPageText(page);
+
+        if (!isLoggedIn) {
+            console.log("\n⚠️  NOT LOGGED IN");
+            console.log("Please log in manually in the browser window that opened.");
+            console.log("Once you're logged in and see your workspace, the script will continue automatically.\n");
+
+            // Wait for user to log in (check every 10 seconds)
+            let attempts = 0;
+            while (!isLoggedIn && attempts < 60) { // Wait up to 10 minutes
+                await page.waitForTimeout(10000);
+                attempts++;
+                const checkLoggedIn = await page.evaluate(() => {
+                    const hasLoginButton = Array.from(document.querySelectorAll('button')).some(b => 
+                        b.innerText.includes('Log in') || b.innerText.includes('Create account')
+                    );
+                    return !hasLoginButton;
+                });
+
+                if (checkLoggedIn) {
+                    console.log("✓ Login detected! Continuing...");
+                    await logPageText(page);
+                    break;
+                }
+            }
+        }
 
         // Refresh every 5 minutes
         setInterval(async () => {
@@ -147,15 +164,7 @@ async function startBrowser() {
                 await page.reload({ waitUntil: 'domcontentloaded', timeout: 90000 });
                 console.log("✓ Page refreshed");
 
-                // Wait for workspace to load after refresh
-                await page.waitForFunction(() => {
-                    const title = document.title;
-                    return title !== 'Loading... - Replit' && title.includes('Replit');
-                }, { timeout: 120000 });
-
                 await page.waitForTimeout(5000);
-
-                // Log text content after refresh
                 await logPageText(page);
             } catch (e) {
                 console.log("✗ Refresh failed:", e.message);

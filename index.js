@@ -177,10 +177,10 @@ async function startBrowser() {
             fs.writeFileSync(cookiesPath, JSON.stringify(cookies, null, 2));
             console.log(`✓ Saved ${cookies.length} cookies for future use`);
 
-            // Press Ctrl+Enter on initial load (this is the new functionality)
-            console.log("\n🚀 Workspace loaded! Pressing Ctrl+Enter...");
+            // Press M key on initial load
+            console.log("\n🚀 Workspace loaded! Pressing M key...");
             await page.waitForTimeout(2000); // Small delay to ensure everything is ready
-            await pressCtrlEnter(page);
+            await pressMKey(page);
         } else {
             console.log("\n✗ NOT LOGGED IN");
             console.log("Please export cookies from your browser and save to 'replit_cookies.json'\n");

@@ -30,69 +30,52 @@ async function clickRunButton(page) {
     try {
         console.log("Searching for run button...");
 
-        // Try to find the run button with multiple selectors
-        const selectors = [
-            'button[data-cy="ws-run-btn"]',
-            'button[aria-label*="Run"]',
-            'button[aria-label*="run"]'
-        ];
+        // Search for the button by finding the SVG with the play icon path
+        const buttonFound = await page.evaluate(() => {
+            // Find all buttons on the page
+            const allButtons = document.querySelectorAll('button');
 
-        let runButton = null;
-        let usedSelector = null;
+            for (let button of allButtons) {
+                // Look for the play icon SVG path inside the button
+                const playPath = button.querySelector('path[d="M20.593 10.91a1.25 1.25 0 0 1 0 2.18l-14.48 8.145a1.25 1.25 0 0 1-1.863-1.09V3.855a1.25 1.25 0 0 1 1.863-1.09l14.48 8.146Z"]');
 
-        for (const selector of selectors) {
-            try {
-                await page.waitForSelector(selector, { timeout: 5000 });
-                runButton = await page.$(selector);
-                if (runButton) {
-                    usedSelector = selector;
-                    console.log(`✓ Found run button with selector: ${selector}`);
-                    break;
+                if (playPath) {
+                    // Found the play button (Replit is stopped)
+                    button.setAttribute('data-found', 'play-button');
+                    return { found: true, type: 'play', dataCy: button.getAttribute('data-cy') };
                 }
-            } catch (e) {
-                // Try next selector
-            }
-        }
 
-        if (!runButton) {
-            console.log("✗ Run button not found");
+                // Look for the stop icon SVG path inside the button
+                const stopPath = button.querySelector('path[d="M3.25 6A2.75 2.75 0 0 1 6 3.25h12A2.75 2.75 0 0 1 20.75 6v12A2.75 2.75 0 0 1 18 20.75H6A2.75 2.75 0 0 1 3.25 18V6Z"]');
+
+                if (stopPath) {
+                    // Found the stop button (Replit is running)
+                    button.setAttribute('data-found', 'stop-button');
+                    return { found: true, type: 'stop', dataCy: button.getAttribute('data-cy') };
+                }
+            }
+
+            return { found: false };
+        });
+
+        console.log("Button search result:", JSON.stringify(buttonFound, null, 2));
+
+        if (!buttonFound.found) {
+            console.log("✗ Run/Stop button not found on page");
             return;
         }
 
-        // Check the icon state
-        const buttonStatus = await page.evaluate((selector) => {
-            const button = document.querySelector(selector);
-            if (!button) return { found: false };
+        if (buttonFound.type === 'play') {
+            console.log("✓ PLAY button found - Replit is STOPPED. Clicking to START...");
 
-            const svg = button.querySelector('svg');
-            if (!svg) return { found: true, hasIcon: false };
+            // Click the button we marked
+            await page.click('button[data-found="play-button"]');
 
-            // Check for play icon (triangle - means stopped, needs to run)
-            const playPath = svg.querySelector('path[d*="20.593"]');
-
-            // Check for stop icon (square - means running)
-            const stopPath = svg.querySelector('path[d*="3.25 6"]');
-
-            return {
-                found: true,
-                hasIcon: true,
-                isPlayIcon: !!playPath,
-                isStopIcon: !!stopPath,
-                svgFill: svg.getAttribute('fill')
-            };
-        }, usedSelector);
-
-        console.log("Button status:", JSON.stringify(buttonStatus, null, 2));
-
-        if (buttonStatus.isPlayIcon) {
-            console.log("✓ Replit is STOPPED (Play icon showing). Clicking RUN button...");
-            await page.click(usedSelector);
-            console.log("✓ Run button clicked!");
+            console.log("✓ Run button clicked successfully!");
             await page.waitForTimeout(3000);
-        } else if (buttonStatus.isStopIcon) {
-            console.log("→ Replit is RUNNING (Stop icon showing). No action needed.");
-        } else {
-            console.log("? Cannot determine button state");
+
+        } else if (buttonFound.type === 'stop') {
+            console.log("→ STOP button found - Replit is already RUNNING. No action needed.");
         }
 
     } catch (error) {

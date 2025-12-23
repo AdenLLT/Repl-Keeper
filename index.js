@@ -30,21 +30,27 @@ function findChrome() {
 async function clickRunButtonIfPresent(page) {
     try {
         const runButtonClicked = await page.evaluate(() => {
-            // Look for the Run button using multiple selectors
-            const buttons = Array.from(document.querySelectorAll('button'));
+            // Look for the EXACT Run button using specific selectors
+            // Priority 1: data-cy attribute
+            let runButton = document.querySelector('button[data-cy="ws-run-btn"]');
 
-            // Find Run button by checking for the specific SVG path or button text
-            const runButton = buttons.find(button => {
-                const svg = button.querySelector('svg');
-                const path = button.querySelector('path[d*="M20.593 10.91"]');
-                const hasRunText = button.innerText.toLowerCase().includes('run');
-                const hasPlayIcon = svg && svg.querySelector('path[fill-rule="evenodd"]');
+            // Priority 2: aria-label
+            if (!runButton) {
+                runButton = document.querySelector('button[aria-label="Run or stop the app"]');
+            }
 
-                return path || hasRunText || hasPlayIcon;
-            });
+            // Priority 3: Combination check - button with specific path AND aria-label
+            if (!runButton) {
+                const buttons = Array.from(document.querySelectorAll('button'));
+                runButton = buttons.find(button => {
+                    const ariaLabel = button.getAttribute('aria-label');
+                    const hasCorrectLabel = ariaLabel === 'Run or stop the app';
+                    const path = button.querySelector('path[d*="M20.593 10.91"]');
+                    return hasCorrectLabel && path;
+                });
+            }
 
             if (runButton) {
-                console.log('RUN BUTTON FOUND - CLICKING NOW!');
                 runButton.click();
                 return true;
             }

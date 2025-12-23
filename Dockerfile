@@ -3,15 +3,19 @@ FROM ghcr.io/puppeteer/puppeteer:latest
 USER root
 WORKDIR /app
 
-# Tell npm and Puppeteer NOT to download Chrome
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-
-COPY --chown=pptruser:pptruser package*.json ./
+# Ensure pptruser owns the directory before switching
+COPY package*.json ./
+RUN chown -R pptruser:pptruser /app
 
 USER pptruser
-RUN npm install --only=production
+
+# Skip the download because the image already has it
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+
+RUN npm install
 
 COPY --chown=pptruser:pptruser . .
 
 EXPOSE 8080
+
 CMD ["node", "index.js"]

@@ -1,16 +1,39 @@
 const puppeteer = require('puppeteer-core');
 const express = require('express');
+const fs = require('fs');
 const app = express();
 
 app.get('/', (req, res) => res.send('Keeper is Active'));
 app.listen(8080);
 
+// Function to find Chrome executable
+function findChrome() {
+    const paths = [
+        '/usr/bin/google-chrome',
+        '/usr/bin/chromium',
+        '/usr/bin/chromium-browser',
+        '/usr/bin/google-chrome-stable',
+        process.env.CHROME_PATH,
+    ].filter(Boolean);
+
+    for (const path of paths) {
+        if (fs.existsSync(path)) {
+            console.log(`Found Chrome at: ${path}`);
+            return path;
+        }
+    }
+
+    throw new Error('Chrome executable not found');
+}
+
 async function startBrowser() {
     console.log("Starting browser with explicit path...");
     try {
+        const chromePath = findChrome();
+
         const browser = await puppeteer.launch({
             headless: "new",
-            executablePath: '/usr/bin/google-chrome', // Hardcoded path
+            executablePath: chromePath,
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',

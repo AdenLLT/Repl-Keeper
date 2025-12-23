@@ -51,8 +51,12 @@ async function clickRunButtonIfPresent(page) {
             }
 
             if (runButton) {
-                runButton.click();
-                return true;
+                // Check if workspace is actually loaded
+                const workspaceLoaded = !document.body.innerText.includes('The workspace is loading');
+                if (workspaceLoaded) {
+                    runButton.click();
+                    return true;
+                }
             }
             return false;
         });
@@ -200,6 +204,10 @@ async function startBrowser() {
 
         // Check if logged in
         const isLoggedIn = await logPageText(page);
+
+        // Wait for workspace to fully load before checking for Run button
+        console.log("Waiting for workspace to load...");
+        await page.waitForTimeout(15000); // Wait 15 seconds for workspace to fully load
 
         if (isLoggedIn) {
             // Save cookies for next time

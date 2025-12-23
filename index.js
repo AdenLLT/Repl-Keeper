@@ -27,6 +27,23 @@ function findChrome() {
     throw new Error('Chrome executable not found');
 }
 
+async function pressCtrlEnter(page) {
+    try {
+        console.log('⌨️  Pressing Ctrl+Enter...');
+
+        // Focus on the page first
+        await page.keyboard.down('Control');
+        await page.keyboard.press('Enter');
+        await page.keyboard.up('Control');
+
+        console.log('✓ CTRL+ENTER PRESSED!');
+        return true;
+    } catch (error) {
+        console.log("Error pressing Ctrl+Enter:", error.message);
+        return false;
+    }
+}
+
 async function clickRunButtonIfPresent(page) {
     try {
         const runButtonClicked = await page.evaluate(() => {
@@ -205,7 +222,7 @@ async function startBrowser() {
         // Check if logged in
         const isLoggedIn = await logPageText(page);
 
-        // Wait for workspace to fully load before checking for Run button
+        // Wait for workspace to fully load before pressing Ctrl+Enter
         console.log("Waiting for workspace to load...");
         await page.waitForTimeout(15000); // Wait 15 seconds for workspace to fully load
 
@@ -216,7 +233,12 @@ async function startBrowser() {
             fs.writeFileSync(cookiesPath, JSON.stringify(cookies, null, 2));
             console.log(`✓ Saved ${cookies.length} cookies for future use`);
 
-            // Start monitoring for Run button
+            // Press Ctrl+Enter on initial load (this is the new functionality)
+            console.log("\n🚀 Workspace loaded! Pressing Ctrl+Enter...");
+            await page.waitForTimeout(2000); // Small delay to ensure everything is ready
+            await pressCtrlEnter(page);
+
+            // Start monitoring for Run button as backup
             console.log("\n🔍 Starting Run button monitor...");
             monitorForRunButton(page);
 
@@ -243,7 +265,14 @@ async function startBrowser() {
                     const cookies = await page.cookies();
                     fs.writeFileSync(cookiesPath, JSON.stringify(cookies, null, 2));
 
-                    // Check for Run button after refresh
+                    // Wait for workspace to load after refresh
+                    await page.waitForTimeout(15000);
+
+                    // Press Ctrl+Enter after each refresh too
+                    console.log("🚀 Pressing Ctrl+Enter after refresh...");
+                    await pressCtrlEnter(page);
+
+                    // Check for Run button after refresh as backup
                     await page.waitForTimeout(3000);
                     await clickRunButtonIfPresent(page);
                 }

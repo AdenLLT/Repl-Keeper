@@ -27,83 +27,60 @@ function findChrome() {
     throw new Error('Chrome executable not found');
 }
 
-async function pressMKey(page) {
-    try {
-        console.log('⌨️  Pressing M key...');
+// Your Replit Auto-Run Script
+const userScript = `
+(function() {
+    'use strict';
+    const CHECK_INTERVAL_MS = 5000; 
+    const BUTTON_SELECTOR = 'button[data-cy="ws-run-btn"]';
+    const RUN_ICON_PATH_DATA = 'M20.593 10.91a1.25 1.25 0 0 1 0 2.18l-14.48 8.145a1.25 1.25 0 0 1-1.863-1.09V3.855a1.25 1.25 0 0 1 1.863-1.09l14.48 8.146Z';
 
-        // Press the M key
-        await page.keyboard.press('m');
+    const simulateMouseClick = (element) => {
+        const dispatchEvent = (type) => {
+            const event = new MouseEvent(type, {
+                bubbles: true,
+                cancelable: true,
+                view: window
+            });
+            element.dispatchEvent(event);
+        };
+        dispatchEvent('mousedown');
+        dispatchEvent('mouseup');
+        dispatchEvent('click');
+    };
 
-        console.log('✓ M KEY PRESSED!');
-        return true;
-    } catch (error) {
-        console.log("Error pressing M key:", error.message);
-        return false;
+    function monitorAndClickRunButton() {
+        const button = document.querySelector(BUTTON_SELECTOR);
+
+        if (button) {
+            const iconPath = button.querySelector('svg path');
+
+            if (iconPath && iconPath.getAttribute('d') === RUN_ICON_PATH_DATA) {
+                simulateMouseClick(button);
+                console.log('Replit Auto-Run: Found RUN icon (Play). Restarting service.');
+            } else {
+                console.log('Replit Auto-Run: Button found, but icon is NOT the RUN (Play) triangle. App is running or stopping.');
+            }
+        } else {
+            console.log('Replit Auto-Run: Button component not found. Retrying in 5 seconds.');
+        }
     }
-}
 
-
-
-async function logPageText(page) {
-    try {
-        console.log("\n========================================");
-        console.log("WORKSPACE TEXT CONTENT:");
-        console.log("========================================\n");
-
-        const textContent = await page.evaluate(() => {
-            // Get all text content from the body
-            const bodyText = document.body.innerText;
-
-            // Check if we're logged in
-            const hasLoginButton = Array.from(document.querySelectorAll('button')).some(b => 
-                b.innerText.includes('Log in') || b.innerText.includes('Create account')
-            );
-
-            // Also get some structural information
-            const info = {
-                title: document.title,
-                url: window.location.href,
-                loggedIn: !hasLoginButton,
-                headings: Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, h6')).map(h => h.innerText.trim()).filter(Boolean),
-                buttons: Array.from(document.querySelectorAll('button')).map(b => b.innerText.trim() || b.getAttribute('aria-label') || '[No text]').filter(Boolean).slice(0, 20),
-                links: Array.from(document.querySelectorAll('a')).map(a => a.innerText.trim()).filter(Boolean).slice(0, 20),
-                bodyText: bodyText
-            };
-
-            return info;
-        });
-
-        console.log("PAGE TITLE:", textContent.title);
-        console.log("PAGE URL:", textContent.url);
-        console.log("LOGGED IN:", textContent.loggedIn ? "✓ YES" : "✗ NO");
-        console.log("\nHEADINGS:", textContent.headings.length > 0 ? textContent.headings.join(', ') : 'None found');
-        console.log("\nBUTTONS (first 20):", textContent.buttons.length > 0 ? textContent.buttons.join(' | ') : 'None found');
-        console.log("\nLINKS (first 20):", textContent.links.length > 0 ? textContent.links.join(' | ') : 'None found');
-        console.log("\n--- FULL BODY TEXT ---");
-        console.log(textContent.bodyText);
-        console.log("\n========================================\n");
-
-        return textContent.loggedIn;
-
-    } catch (error) {
-        console.log("Error logging page text:", error.message);
-        return false;
-    }
-}
+    console.log('Replit Auto-Run: Starting state-aware monitor. Checking every 5 seconds.');
+    setInterval(monitorAndClickRunButton, CHECK_INTERVAL_MS);
+})();
+`;
 
 async function startBrowser() {
-    console.log("Starting browser with persistent session...");
+    console.log("Starting browser with Auto-Run script...");
     try {
         const chromePath = findChrome();
 
-        // Create a persistent user data directory
         const userDataDir = path.join(__dirname, 'chrome_user_data');
         if (!fs.existsSync(userDataDir)) {
             fs.mkdirSync(userDataDir, { recursive: true });
-            console.log("✓ Created user data directory:", userDataDir);
         }
 
-        // Path to save/load cookies
         const cookiesPath = path.join(__dirname, 'replit_cookies.json');
 
         const browser = await puppeteer.launch({
@@ -115,10 +92,7 @@ async function startBrowser() {
                 '--disable-setuid-sandbox',
                 '--disable-dev-shm-usage',
                 '--single-process',
-                '--no-zygote',
-                '--disable-blink-features=AutomationControlled',
-                '--disable-web-security',
-                '--disable-features=IsolateOrigins,site-per-process'
+                '--no-zygote'
             ]
         });
 
@@ -126,14 +100,11 @@ async function startBrowser() {
 
         const page = await browser.newPage();
 
+        // Inject the userscript on every page load
+        await page.evaluateOnNewDocument(userScript);
+
         await page.setViewport({ width: 1920, height: 1080 });
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-
-        await page.evaluateOnNewDocument(() => {
-            Object.defineProperty(navigator, 'webdriver', {
-                get: () => false,
-            });
-        });
 
         // Load saved cookies if they exist
         if (fs.existsSync(cookiesPath)) {
@@ -143,7 +114,7 @@ async function startBrowser() {
             await page.setCookie(...cookies);
             console.log(`✓ Loaded ${cookies.length} saved cookies`);
         } else {
-            console.log("⚠️  No saved cookies found. You need to export cookies from your browser.");
+            console.log("⚠️  No saved cookies found.");
             console.log("\nTO EXPORT COOKIES:");
             console.log("1. Install 'EditThisCookie' or 'Cookie-Editor' browser extension");
             console.log("2. Go to replit.com and log in");
@@ -158,63 +129,35 @@ async function startBrowser() {
             waitUntil: 'domcontentloaded',
             timeout: 90000 
         });
-        console.log("✓ Page loaded");
+        console.log("✓ Page loaded with Auto-Run script injected!");
 
         // Wait for page to stabilize
         await page.waitForTimeout(5000);
 
-        // Check if logged in
-        const isLoggedIn = await logPageText(page);
+        // Save cookies for next time
+        const cookies = await page.cookies();
+        fs.writeFileSync(cookiesPath, JSON.stringify(cookies, null, 2));
+        console.log(`✓ Saved ${cookies.length} cookies`);
 
-        // Wait for workspace to fully load before pressing Ctrl+Enter
-        console.log("Waiting for workspace to load...");
-        await page.waitForTimeout(15000); // Wait 15 seconds for workspace to fully load
-
-        if (isLoggedIn) {
-            // Save cookies for next time
-            console.log("✓ Logged in successfully! Saving cookies...");
-            const cookies = await page.cookies();
-            fs.writeFileSync(cookiesPath, JSON.stringify(cookies, null, 2));
-            console.log(`✓ Saved ${cookies.length} cookies for future use`);
-
-            // Press M key on initial load
-            console.log("\n🚀 Workspace loaded! Pressing M key...");
-            await page.waitForTimeout(2000); // Small delay to ensure everything is ready
-            await pressMKey(page);
-        } else {
-            console.log("\n✗ NOT LOGGED IN");
-            console.log("Please export cookies from your browser and save to 'replit_cookies.json'\n");
-        }
-
-        // Refresh every 5 minutes
-        setInterval(async () => {
-            try {
-                console.log("\n=== " + new Date().toLocaleTimeString() + " - Refreshing ===");
-                await page.reload({ waitUntil: 'domcontentloaded', timeout: 90000 });
-                console.log("✓ Page refreshed");
-
-                await page.waitForTimeout(5000);
-                const stillLoggedIn = await logPageText(page);
-
-                if (stillLoggedIn) {
-                    // Update saved cookies
-                    const cookies = await page.cookies();
-                    fs.writeFileSync(cookiesPath, JSON.stringify(cookies, null, 2));
-                }
-            } catch (e) {
-                console.log("✗ Refresh failed:", e.message);
+        // Enable console logging from the page so you can see the userscript output
+        page.on('console', msg => {
+            const text = msg.text();
+            if (text.includes('Replit Auto-Run')) {
+                console.log(`[Page Console] ${text}`);
             }
-        }, 5 * 60 * 1000);
+        });
+
+        console.log("\n✓ Auto-Run script is now monitoring the page!");
+        console.log("The script will check every 5 seconds and click Run if needed.");
+        console.log("Browser will stay open... Press Ctrl+C to stop\n");
+
+        // Keep the browser alive
+        await new Promise(() => {});
 
     } catch (err) {
-        console.error("LAUNCH ERROR:", err.message);
-        console.log("Full Error Stack:", err.stack);
-        console.log("\nRetrying in 30 seconds...");
-
-        setTimeout(() => {
-            console.log("=== RETRYING BROWSER STARTUP ===");
-            startBrowser();
-        }, 30000);
+        console.error("Error:", err.message);
+        console.log("Retrying in 30 seconds...");
+        setTimeout(() => startBrowser(), 30000);
     }
 }
 

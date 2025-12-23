@@ -30,44 +30,11 @@ async function clickRunButton(page) {
     try {
         console.log("Searching for run button...");
 
-        // First, let's see what buttons exist on the page
-        const pageInfo = await page.evaluate(() => {
-            const allButtons = document.querySelectorAll('button');
-            const buttonInfo = [];
-
-            allButtons.forEach((btn, index) => {
-                const dataCy = btn.getAttribute('data-cy');
-                const ariaLabel = btn.getAttribute('aria-label');
-                const textContent = btn.textContent?.trim().substring(0, 50);
-
-                if (dataCy || ariaLabel || textContent) {
-                    buttonInfo.push({
-                        index,
-                        dataCy,
-                        ariaLabel,
-                        textContent
-                    });
-                }
-            });
-
-            return {
-                url: window.location.href,
-                buttonCount: allButtons.length,
-                buttons: buttonInfo.slice(0, 20) // First 20 buttons
-            };
-        });
-
-        console.log("Page URL:", pageInfo.url);
-        console.log("Total buttons found:", pageInfo.buttonCount);
-        console.log("Button samples:", JSON.stringify(pageInfo.buttons, null, 2));
-
         // Try to find the run button with multiple selectors
         const selectors = [
             'button[data-cy="ws-run-btn"]',
             'button[aria-label*="Run"]',
-            'button[aria-label*="run"]',
-            'button[aria-label*="Start"]',
-            'button[aria-label*="start"]'
+            'button[aria-label*="run"]'
         ];
 
         let runButton = null;
@@ -88,7 +55,7 @@ async function clickRunButton(page) {
         }
 
         if (!runButton) {
-            console.log("✗ Run button not found with any selector");
+            console.log("✗ Run button not found");
             return;
         }
 
@@ -100,20 +67,10 @@ async function clickRunButton(page) {
             const svg = button.querySelector('svg');
             if (!svg) return { found: true, hasIcon: false };
 
-            const allPaths = button.querySelectorAll('path');
-            const pathData = [];
-
-            allPaths.forEach(path => {
-                const d = path.getAttribute('d');
-                if (d) {
-                    pathData.push(d.substring(0, 50)); // First 50 chars
-                }
-            });
-
-            // Check for play icon
+            // Check for play icon (triangle - means stopped, needs to run)
             const playPath = svg.querySelector('path[d*="20.593"]');
 
-            // Check for stop icon
+            // Check for stop icon (square - means running)
             const stopPath = svg.querySelector('path[d*="3.25 6"]');
 
             return {
@@ -121,23 +78,21 @@ async function clickRunButton(page) {
                 hasIcon: true,
                 isPlayIcon: !!playPath,
                 isStopIcon: !!stopPath,
-                svgFill: svg.getAttribute('fill'),
-                pathCount: allPaths.length,
-                pathData: pathData
+                svgFill: svg.getAttribute('fill')
             };
         }, usedSelector);
 
         console.log("Button status:", JSON.stringify(buttonStatus, null, 2));
 
         if (buttonStatus.isPlayIcon) {
-            console.log("✓ Replit is STOPPED. Clicking RUN button...");
+            console.log("✓ Replit is STOPPED (Play icon showing). Clicking RUN button...");
             await page.click(usedSelector);
             console.log("✓ Run button clicked!");
             await page.waitForTimeout(3000);
         } else if (buttonStatus.isStopIcon) {
-            console.log("→ Replit is RUNNING. No action needed.");
+            console.log("→ Replit is RUNNING (Stop icon showing). No action needed.");
         } else {
-            console.log("? Cannot determine button state from icon");
+            console.log("? Cannot determine button state");
         }
 
     } catch (error) {
@@ -176,6 +131,16 @@ async function startBrowser() {
             });
         });
 
+        // STEP 1: Go to replit.com first to establish the domain
+        console.log("STEP 1: Visiting replit.com to establish domain...");
+        await page.goto('https://replit.com', { 
+            waitUntil: 'domcontentloaded',
+            timeout: 60000 
+        });
+        console.log("✓ Domain established");
+
+        // STEP 2: Now set the cookies
+        console.log("STEP 2: Setting authentication cookies...");
         await page.setCookie({
             name: 'connect.sid',
             value: 'eyJhbGciOiJSUzI1NiIsImtpZCI6ImM0MTZJUSJ9.eyJpc3MiOiJodHRwczovL3Nlc3Npb24uZmlyZWJhc2UuZ29vZ2xlLmNvbS9yZXBsaXQtd2ViIiwicm9sZXMiOltdLCJhdWQiOiJyZXBsaXQtd2ViIiwiYXV0aF90aW1lIjoxNzY2MjI5MzE4LCJ1c2VyX2lkIjoiNmpLSXNXVjBLdmhNT2Z5OE53VmlHMXJOaDVCMyIsInN1YiI6IjZqS0lzV1YwS3ZoTU9meThOd1ZpRzFyTmg1QjMiLCJpYXQiOjE3NjYzMDc2NTAsImV4cCI6MTc2NjkxMjQ1MCwiZW1haWwiOiJhZGVuZ3JlZW4xMTFAZ21haWwuY29tIiwiZW1haWxfdmVyaWZpZWQiOnRydWUsImZpcmViYXNlIjp7ImlkZW50aXRpZXMiOnsiZ29vZ2xlLmNvbSI6WyIxMDExNzQ4Nzk3NjkxOTEyMDU2NzIiXSwiZW1haWwiOlsiYWRlbmdyZWVuMTExQGdtYWlsLmNvbSJdfSwic2lnbl9pbl9wcm92aWRlciI6Imdvb2dsZS5jb20ifX0.nXS6PDeDR7neFaIVVRjuPJSN2Aa8mXY-7vGVNx0lQsfXgZ_AhzWfuh4xinn-QV9W0SOXJrOc4HBRU08-ubHSv4AwMMMJ2ERpQCNDnVwL99DsbB8jFznWVPYgAADzb5ZHM3FFXPzOe0JoxQ33eSa2EA85-o0q7wOmOZjvfo2FunPiNU95EvzezVbAHL_WPN4TBmcuUZtCsnn-mZkeMOkc6wUUXsJkruACQXlZ-MmIzf9Alq_7B70ilCQX9T8j19yysC0NMIGbjNRHw01bW0ThLnemN89meaOJ_zqfv3FentiXFuQ7SKlpofcQC66sm4C2IPL1j--ByAQPxyJy_JwhaA',
@@ -184,41 +149,29 @@ async function startBrowser() {
             httpOnly: true,
             secure: true
         });
+        console.log("✓ Cookies set");
 
-        console.log("Navigating to Replit...");
+        // STEP 3: Now navigate to your specific Replit project WITH the cookies
+        console.log("STEP 3: Navigating to your Replit project with authentication...");
+        await page.goto('https://replit.com/@HUDV1/mb#main.py', { 
+            waitUntil: 'domcontentloaded',
+            timeout: 90000 
+        });
+        console.log("✓ Project page loaded with authentication");
 
-        let navigationSuccess = false;
-        let attempts = 0;
-        const maxAttempts = 3;
-
-        while (!navigationSuccess && attempts < maxAttempts) {
-            try {
-                attempts++;
-                console.log(`Navigation attempt ${attempts}/${maxAttempts}...`);
-
-                await page.goto('https://replit.com/@HUDV1/mb#main.py', { 
-                    waitUntil: 'domcontentloaded',
-                    timeout: 90000 
-                });
-
-                navigationSuccess = true;
-                console.log("SUCCESS: Replit project loaded.");
-
-            } catch (navError) {
-                console.log(`Navigation attempt ${attempts} failed:`, navError.message);
-                if (attempts < maxAttempts) {
-                    console.log("Retrying in 5 seconds...");
-                    await page.waitForTimeout(5000);
-                }
-            }
-        }
-
-        if (!navigationSuccess) {
-            throw new Error("Failed to load page after all attempts");
-        }
-
-        // Wait for page to settle
+        // Wait for the page to fully load and render
+        console.log("Waiting for page to fully render...");
         await page.waitForTimeout(10000);
+
+        // Log page info to verify we're logged in
+        const pageInfo = await page.evaluate(() => {
+            return {
+                url: window.location.href,
+                title: document.title,
+                buttonCount: document.querySelectorAll('button').length
+            };
+        });
+        console.log("Page Info:", JSON.stringify(pageInfo, null, 2));
 
         // Check and click run button
         await clickRunButton(page);
@@ -226,24 +179,24 @@ async function startBrowser() {
         // Refresh every 5 minutes
         setInterval(async () => {
             try {
-                console.log("\n--- Refreshing page ---");
+                console.log("\n=== " + new Date().toLocaleTimeString() + " - Refreshing ===");
                 await page.reload({ waitUntil: 'domcontentloaded', timeout: 90000 });
-                console.log("Refresh successful: " + new Date().toLocaleTimeString());
+                console.log("✓ Page refreshed");
 
                 await page.waitForTimeout(10000);
                 await clickRunButton(page);
             } catch (e) {
-                console.log("Refresh failed:", e.message);
+                console.log("✗ Refresh failed:", e.message);
             }
         }, 5 * 60 * 1000);
 
     } catch (err) {
         console.error("LAUNCH ERROR:", err.message);
         console.log("Full Error Stack:", err.stack);
-        console.log("Will retry in 30 seconds...");
+        console.log("\nRetrying in 30 seconds...");
 
         setTimeout(() => {
-            console.log("Retrying browser startup...");
+            console.log("=== RETRYING BROWSER STARTUP ===");
             startBrowser();
         }, 30000);
     }

@@ -27,78 +27,22 @@ function findChrome() {
     throw new Error('Chrome executable not found');
 }
 
-async function pressCtrlEnter(page) {
+async function pressMKey(page) {
     try {
-        console.log('⌨️  Pressing Ctrl+Enter...');
+        console.log('⌨️  Pressing M key...');
 
-        // Focus on the page first
-        await page.keyboard.down('Control');
-        await page.keyboard.press('Enter');
-        await page.keyboard.up('Control');
+        // Press the M key
+        await page.keyboard.press('m');
 
-        console.log('✓ CTRL+ENTER PRESSED!');
+        console.log('✓ M KEY PRESSED!');
         return true;
     } catch (error) {
-        console.log("Error pressing Ctrl+Enter:", error.message);
+        console.log("Error pressing M key:", error.message);
         return false;
     }
 }
 
-async function clickRunButtonIfPresent(page) {
-    try {
-        const runButtonClicked = await page.evaluate(() => {
-            // Look for the EXACT Run button using specific selectors
-            // Priority 1: data-cy attribute
-            let runButton = document.querySelector('button[data-cy="ws-run-btn"]');
 
-            // Priority 2: aria-label
-            if (!runButton) {
-                runButton = document.querySelector('button[aria-label="Run or stop the app"]');
-            }
-
-            // Priority 3: Combination check - button with specific path AND aria-label
-            if (!runButton) {
-                const buttons = Array.from(document.querySelectorAll('button'));
-                runButton = buttons.find(button => {
-                    const ariaLabel = button.getAttribute('aria-label');
-                    const hasCorrectLabel = ariaLabel === 'Run or stop the app';
-                    const path = button.querySelector('path[d*="M20.593 10.91"]');
-                    return hasCorrectLabel && path;
-                });
-            }
-
-            if (runButton) {
-                // Check if workspace is actually loaded
-                const workspaceLoaded = !document.body.innerText.includes('The workspace is loading');
-                if (workspaceLoaded) {
-                    runButton.click();
-                    return true;
-                }
-            }
-            return false;
-        });
-
-        if (runButtonClicked) {
-            console.log('✓ RUN BUTTON CLICKED!');
-            return true;
-        }
-        return false;
-    } catch (error) {
-        console.log("Error checking for Run button:", error.message);
-        return false;
-    }
-}
-
-async function monitorForRunButton(page) {
-    // Check for Run button every 2 seconds
-    setInterval(async () => {
-        try {
-            await clickRunButtonIfPresent(page);
-        } catch (error) {
-            console.log("Error in Run button monitor:", error.message);
-        }
-    }, 2000);
-}
 
 async function logPageText(page) {
     try {
@@ -237,14 +181,6 @@ async function startBrowser() {
             console.log("\n🚀 Workspace loaded! Pressing Ctrl+Enter...");
             await page.waitForTimeout(2000); // Small delay to ensure everything is ready
             await pressCtrlEnter(page);
-
-            // Start monitoring for Run button as backup
-            console.log("\n🔍 Starting Run button monitor...");
-            monitorForRunButton(page);
-
-            // Also check immediately after page loads
-            await page.waitForTimeout(3000);
-            await clickRunButtonIfPresent(page);
         } else {
             console.log("\n✗ NOT LOGGED IN");
             console.log("Please export cookies from your browser and save to 'replit_cookies.json'\n");
@@ -264,17 +200,6 @@ async function startBrowser() {
                     // Update saved cookies
                     const cookies = await page.cookies();
                     fs.writeFileSync(cookiesPath, JSON.stringify(cookies, null, 2));
-
-                    // Wait for workspace to load after refresh
-                    await page.waitForTimeout(15000);
-
-                    // Press Ctrl+Enter after each refresh too
-                    console.log("🚀 Pressing Ctrl+Enter after refresh...");
-                    await pressCtrlEnter(page);
-
-                    // Check for Run button after refresh as backup
-                    await page.waitForTimeout(3000);
-                    await clickRunButtonIfPresent(page);
                 }
             } catch (e) {
                 console.log("✗ Refresh failed:", e.message);

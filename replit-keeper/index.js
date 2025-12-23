@@ -60,8 +60,22 @@ async function startBrowser() {
         }
     }
 
+    // Function to press the M key
+    async function pressM() {
+        try {
+            await page.keyboard.press('m');
+            console.log("Pressed M key at " + new Date().toLocaleTimeString());
+        } catch (e) {
+            console.log("Error pressing M key: " + e.message);
+        }
+    }
+
     // Click run button on initial load
     await clickRunButtonIfExists();
+    
+    // Press M key after clicking run button
+    await page.waitForTimeout(1000);
+    await pressM();
 
     // Keep the loop running forever
     setInterval(async () => {
@@ -71,6 +85,10 @@ async function startBrowser() {
             
             // Try to click run button after reload
             await clickRunButtonIfExists();
+            
+            // Press M key after reload
+            await page.waitForTimeout(1000);
+            await pressM();
         } catch (e) {
             console.log("Refresh failed, attempting to restart...");
         }

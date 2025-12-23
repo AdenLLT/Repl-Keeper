@@ -26,53 +26,40 @@ function findChrome() {
     throw new Error('Chrome executable not found');
 }
 
-async function clickRunButton(page) {
+async function logPageText(page) {
     try {
-        console.log("Searching for run button...");
+        console.log("\n========================================");
+        console.log("WORKSPACE TEXT CONTENT:");
+        console.log("========================================\n");
 
-        // Search for the button by finding the SVG with the play icon path
-        const buttonFound = await page.evaluate(() => {
-            const allButtons = document.querySelectorAll('button');
+        const textContent = await page.evaluate(() => {
+            // Get all text content from the body
+            const bodyText = document.body.innerText;
 
-            for (let button of allButtons) {
-                // Look for the play icon SVG path inside the button
-                const playPath = button.querySelector('path[d="M20.593 10.91a1.25 1.25 0 0 1 0 2.18l-14.48 8.145a1.25 1.25 0 0 1-1.863-1.09V3.855a1.25 1.25 0 0 1 1.863-1.09l14.48 8.146Z"]');
+            // Also get some structural information
+            const info = {
+                title: document.title,
+                url: window.location.href,
+                headings: Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, h6')).map(h => h.innerText.trim()).filter(Boolean),
+                buttons: Array.from(document.querySelectorAll('button')).map(b => b.innerText.trim() || b.getAttribute('aria-label') || '[No text]').filter(Boolean).slice(0, 20), // First 20 buttons
+                links: Array.from(document.querySelectorAll('a')).map(a => a.innerText.trim()).filter(Boolean).slice(0, 20), // First 20 links
+                bodyText: bodyText
+            };
 
-                if (playPath) {
-                    button.setAttribute('data-found', 'play-button');
-                    return { found: true, type: 'play', dataCy: button.getAttribute('data-cy') };
-                }
-
-                // Look for the stop icon SVG path inside the button
-                const stopPath = button.querySelector('path[d="M3.25 6A2.75 2.75 0 0 1 6 3.25h12A2.75 2.75 0 0 1 20.75 6v12A2.75 2.75 0 0 1 18 20.75H6A2.75 2.75 0 0 1 3.25 18V6Z"]');
-
-                if (stopPath) {
-                    button.setAttribute('data-found', 'stop-button');
-                    return { found: true, type: 'stop', dataCy: button.getAttribute('data-cy') };
-                }
-            }
-
-            return { found: false };
+            return info;
         });
 
-        console.log("Button search result:", JSON.stringify(buttonFound, null, 2));
-
-        if (!buttonFound.found) {
-            console.log("✗ Run/Stop button not found on page");
-            return;
-        }
-
-        if (buttonFound.type === 'play') {
-            console.log("✓ PLAY button found - Replit is STOPPED. Clicking to START...");
-            await page.click('button[data-found="play-button"]');
-            console.log("✓ Run button clicked successfully!");
-            await page.waitForTimeout(3000);
-        } else if (buttonFound.type === 'stop') {
-            console.log("→ STOP button found - Replit is already RUNNING. No action needed.");
-        }
+        console.log("PAGE TITLE:", textContent.title);
+        console.log("PAGE URL:", textContent.url);
+        console.log("\nHEADINGS:", textContent.headings.length > 0 ? textContent.headings.join(', ') : 'None found');
+        console.log("\nBUTTONS (first 20):", textContent.buttons.length > 0 ? textContent.buttons.join(' | ') : 'None found');
+        console.log("\nLINKS (first 20):", textContent.links.length > 0 ? textContent.links.join(' | ') : 'None found');
+        console.log("\n--- FULL BODY TEXT ---");
+        console.log(textContent.bodyText);
+        console.log("\n========================================\n");
 
     } catch (error) {
-        console.log("Error in clickRunButton:", error.message);
+        console.log("Error logging page text:", error.message);
     }
 }
 
@@ -150,18 +137,8 @@ async function startBrowser() {
         // Wait an additional moment for UI to stabilize
         await page.waitForTimeout(5000);
 
-        // Log page info
-        const pageInfo = await page.evaluate(() => {
-            return {
-                url: window.location.href,
-                title: document.title,
-                buttonCount: document.querySelectorAll('button').length
-            };
-        });
-        console.log("Workspace Info:", JSON.stringify(pageInfo, null, 2));
-
-        // Check and click run button
-        await clickRunButton(page);
+        // Log all visible text on the workspace
+        await logPageText(page);
 
         // Refresh every 5 minutes
         setInterval(async () => {
@@ -177,7 +154,9 @@ async function startBrowser() {
                 }, { timeout: 120000 });
 
                 await page.waitForTimeout(5000);
-                await clickRunButton(page);
+
+                // Log text content after refresh
+                await logPageText(page);
             } catch (e) {
                 console.log("✗ Refresh failed:", e.message);
             }

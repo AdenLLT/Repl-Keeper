@@ -28,53 +28,120 @@ function findChrome() {
 
 async function clickRunButton(page) {
     try {
-        console.log("Checking run button status...");
+        console.log("Searching for run button...");
 
-        // Wait longer for the button to appear
-        await page.waitForSelector('button[data-cy="ws-run-btn"]', { timeout: 30000 });
+        // First, let's see what buttons exist on the page
+        const pageInfo = await page.evaluate(() => {
+            const allButtons = document.querySelectorAll('button');
+            const buttonInfo = [];
 
-        // Add a small delay to ensure button is fully interactive
-        await page.waitForTimeout(3000);
+            allButtons.forEach((btn, index) => {
+                const dataCy = btn.getAttribute('data-cy');
+                const ariaLabel = btn.getAttribute('aria-label');
+                const textContent = btn.textContent?.trim().substring(0, 50);
 
-        // Check if the play icon (run) exists inside the button
-        const buttonStatus = await page.evaluate(() => {
-            const button = document.querySelector('button[data-cy="ws-run-btn"]');
-            if (!button) return { found: false };
-
-            const svg = button.querySelector('svg');
-            if (!svg) return { found: true, isPlayIcon: false };
-
-            // Check for the EXACT play icon path with the specific d attribute
-            const playPath = svg.querySelector('path[fill-rule="evenodd"][d="M20.593 10.91a1.25 1.25 0 0 1 0 2.18l-14.48 8.145a1.25 1.25 0 0 1-1.863-1.09V3.855a1.25 1.25 0 0 1 1.863-1.09l14.48 8.146Z"]');
-
-            // Check for the stop icon path (square shape)  
-            const stopPath = svg.querySelector('path[fill-rule="evenodd"][d="M3.25 6A2.75 2.75 0 0 1 6 3.25h12A2.75 2.75 0 0 1 20.75 6v12A2.75 2.75 0 0 1 18 20.75H6A2.75 2.75 0 0 1 3.25 18V6Z"]');
+                if (dataCy || ariaLabel || textContent) {
+                    buttonInfo.push({
+                        index,
+                        dataCy,
+                        ariaLabel,
+                        textContent
+                    });
+                }
+            });
 
             return {
-                found: true,
-                isPlayIcon: !!playPath,
-                isStopIcon: !!stopPath,
-                svgFill: svg.getAttribute('fill')
+                url: window.location.href,
+                buttonCount: allButtons.length,
+                buttons: buttonInfo.slice(0, 20) // First 20 buttons
             };
         });
 
-        if (!buttonStatus.found) {
-            console.log("✗ Run button not found on page");
+        console.log("Page URL:", pageInfo.url);
+        console.log("Total buttons found:", pageInfo.buttonCount);
+        console.log("Button samples:", JSON.stringify(pageInfo.buttons, null, 2));
+
+        // Try to find the run button with multiple selectors
+        const selectors = [
+            'button[data-cy="ws-run-btn"]',
+            'button[aria-label*="Run"]',
+            'button[aria-label*="run"]',
+            'button[aria-label*="Start"]',
+            'button[aria-label*="start"]'
+        ];
+
+        let runButton = null;
+        let usedSelector = null;
+
+        for (const selector of selectors) {
+            try {
+                await page.waitForSelector(selector, { timeout: 5000 });
+                runButton = await page.$(selector);
+                if (runButton) {
+                    usedSelector = selector;
+                    console.log(`✓ Found run button with selector: ${selector}`);
+                    break;
+                }
+            } catch (e) {
+                // Try next selector
+            }
+        }
+
+        if (!runButton) {
+            console.log("✗ Run button not found with any selector");
             return;
         }
 
+        // Check the icon state
+        const buttonStatus = await page.evaluate((selector) => {
+            const button = document.querySelector(selector);
+            if (!button) return { found: false };
+
+            const svg = button.querySelector('svg');
+            if (!svg) return { found: true, hasIcon: false };
+
+            const allPaths = button.querySelectorAll('path');
+            const pathData = [];
+
+            allPaths.forEach(path => {
+                const d = path.getAttribute('d');
+                if (d) {
+                    pathData.push(d.substring(0, 50)); // First 50 chars
+                }
+            });
+
+            // Check for play icon
+            const playPath = svg.querySelector('path[d*="20.593"]');
+
+            // Check for stop icon
+            const stopPath = svg.querySelector('path[d*="3.25 6"]');
+
+            return {
+                found: true,
+                hasIcon: true,
+                isPlayIcon: !!playPath,
+                isStopIcon: !!stopPath,
+                svgFill: svg.getAttribute('fill'),
+                pathCount: allPaths.length,
+                pathData: pathData
+            };
+        }, usedSelector);
+
+        console.log("Button status:", JSON.stringify(buttonStatus, null, 2));
+
         if (buttonStatus.isPlayIcon) {
-            console.log("✓ Replit is STOPPED (Play icon detected). Clicking RUN button...");
-            await page.click('button[data-cy="ws-run-btn"]');
-            console.log("✓ Run button clicked successfully!");
-            await page.waitForTimeout(2000);
+            console.log("✓ Replit is STOPPED. Clicking RUN button...");
+            await page.click(usedSelector);
+            console.log("✓ Run button clicked!");
+            await page.waitForTimeout(3000);
         } else if (buttonStatus.isStopIcon) {
-            console.log("→ Replit is RUNNING (Stop icon detected). No action needed.");
+            console.log("→ Replit is RUNNING. No action needed.");
         } else {
-            console.log("? Unknown button state. SVG fill:", buttonStatus.svgFill);
+            console.log("? Cannot determine button state from icon");
         }
+
     } catch (error) {
-        console.log("Could not check/click run button:", error.message);
+        console.log("Error in clickRunButton:", error.message);
     }
 }
 
@@ -100,13 +167,9 @@ async function startBrowser() {
 
         const page = await browser.newPage();
 
-        // Set a realistic viewport
         await page.setViewport({ width: 1920, height: 1080 });
-
-        // Set user agent to look more like a real browser
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
-        // Hide webdriver property
         await page.evaluateOnNewDocument(() => {
             Object.defineProperty(navigator, 'webdriver', {
                 get: () => false,
@@ -124,7 +187,6 @@ async function startBrowser() {
 
         console.log("Navigating to Replit...");
 
-        // Try navigation with retry logic
         let navigationSuccess = false;
         let attempts = 0;
         const maxAttempts = 3;
@@ -135,7 +197,7 @@ async function startBrowser() {
                 console.log(`Navigation attempt ${attempts}/${maxAttempts}...`);
 
                 await page.goto('https://replit.com/@HUDV1/mb#main.py', { 
-                    waitUntil: 'domcontentloaded', // Changed from networkidle2 to be less strict
+                    waitUntil: 'domcontentloaded',
                     timeout: 90000 
                 });
 
@@ -147,32 +209,31 @@ async function startBrowser() {
                 if (attempts < maxAttempts) {
                     console.log("Retrying in 5 seconds...");
                     await page.waitForTimeout(5000);
-                } else {
-                    throw navError;
                 }
             }
         }
 
-        // Wait a bit more for dynamic content to load
-        await page.waitForTimeout(8000);
+        if (!navigationSuccess) {
+            throw new Error("Failed to load page after all attempts");
+        }
 
-        // Check and click run button if needed after page loads
+        // Wait for page to settle
+        await page.waitForTimeout(10000);
+
+        // Check and click run button
         await clickRunButton(page);
 
-        // Refresh every 5 minutes and check/click run button if needed
+        // Refresh every 5 minutes
         setInterval(async () => {
             try {
-                console.log("Refreshing page...");
+                console.log("\n--- Refreshing page ---");
                 await page.reload({ waitUntil: 'domcontentloaded', timeout: 90000 });
                 console.log("Refresh successful: " + new Date().toLocaleTimeString());
 
-                // Wait for dynamic content after refresh
-                await page.waitForTimeout(8000);
-
-                // Check and click run button if needed after refresh
+                await page.waitForTimeout(10000);
                 await clickRunButton(page);
             } catch (e) {
-                console.log("Refresh failed, retrying in 5 mins:", e.message);
+                console.log("Refresh failed:", e.message);
             }
         }, 5 * 60 * 1000);
 
@@ -181,7 +242,6 @@ async function startBrowser() {
         console.log("Full Error Stack:", err.stack);
         console.log("Will retry in 30 seconds...");
 
-        // Retry the entire browser startup after 30 seconds
         setTimeout(() => {
             console.log("Retrying browser startup...");
             startBrowser();

@@ -96,7 +96,7 @@ async function startBrowser() {
 
         // STEP 1: Go to replit.com first to establish the domain
         console.log("STEP 1: Visiting replit.com to establish domain...");
-        await page.goto('https://replit.com', { 
+        await page.goto('https://replit.com/@HUDV1/mb#main.py', { 
             waitUntil: 'domcontentloaded',
             timeout: 60000 
         });

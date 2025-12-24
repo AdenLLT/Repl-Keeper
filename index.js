@@ -4,10 +4,8 @@ const fs = require('fs');
 const path = require('path');
 const app = express();
 
-// Option 1: Serve the userscripts folder so the browser can download the script via HTTP
-app.use('/scripts', express.static(path.join(__dirname, 'userscripts')));
-app.get('/', (req, res) => res.send('Keeper is Active'));
-app.listen(8080, () => console.log("✓ Local server hosting scripts on port 8080"));
+app.get('/', (req, res) => res.send('Keeper is Active - No Extension Needed'));
+app.listen(8080);
 
 function findChrome() {
     const paths = [
@@ -17,13 +15,7 @@ function findChrome() {
         '/usr/bin/google-chrome-stable',
         process.env.CHROME_PATH,
     ].filter(Boolean);
-
-    for (const path of paths) {
-        if (fs.existsSync(path)) {
-            console.log(`Found Chrome at: ${path}`);
-            return path;
-        }
-    }
+    for (const p of paths) { if (fs.existsSync(p)) return p; }
     throw new Error('Chrome executable not found');
 }
 
@@ -33,98 +25,68 @@ async function startBrowser() {
         const chromePath = findChrome();
         const userDataDir = path.join(__dirname, 'chrome_user_data');
         const cookiesPath = path.join(__dirname, 'replit_cookies.json');
-        const extensionPath = path.join(__dirname, 'tampermonkey-extension');
 
-        // This is the filename inside your userscripts/ folder
-        const scriptFileName = 'replit-keeper.user.js'; 
-
-        if (!fs.existsSync(userDataDir)) {
-            fs.mkdirSync(userDataDir, { recursive: true });
-        }
+        if (!fs.existsSync(userDataDir)) fs.mkdirSync(userDataDir, { recursive: true });
 
         const browser = await puppeteer.launch({
-            headless: "new", 
+            headless: "new", // Now works perfectly in headless mode!
             executablePath: chromePath,
             userDataDir: userDataDir,
-            args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--single-process',
-                '--no-zygote',
-                `--disable-extensions-except=${extensionPath}`,
-                `--load-extension=${extensionPath}`
-            ]
+            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
         });
 
-        console.log("✓ Browser launched with Tampermonkey!");
-
         const page = await browser.newPage();
-
-        // --- INSTALL USERSCRIPT VIA LOCALHOST (FIXES ERR_ABORTED) ---
-        console.log(`Triggering Userscript installation from http://localhost:8080/scripts/${scriptFileName}`);
-
-        // Navigating to the HTTP URL allows Tampermonkey to detect the .user.js extension
-        await page.goto(`http://localhost:8080/scripts/${scriptFileName}`, { waitUntil: 'networkidle0' });
-
-        // Wait for Tampermonkey to parse the script and open the install tab
-        await new Promise(r => setTimeout(r, 3000)); 
-
-        await page.setViewport({ width: 1920, height: 1080 });
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
         if (fs.existsSync(cookiesPath)) {
-            const cookiesString = fs.readFileSync(cookiesPath, 'utf8');
-            const cookies = JSON.parse(cookiesString);
+            const cookies = JSON.parse(fs.readFileSync(cookiesPath, 'utf8'));
             await page.setCookie(...cookies);
-            console.log(`✓ Loaded ${cookies.length} cookies`);
+            console.log(`✓ Cookies loaded`);
         }
 
         const WORKSPACE_URL = 'https://replit.com/@HUDV1/mb#main.py';
 
-        console.log("Navigating to Replit workspace...");
-        await page.goto(WORKSPACE_URL, { 
-            waitUntil: 'domcontentloaded',
-            timeout: 90000 
-        });
-        console.log("✓ Workspace loaded! Tampermonkey is now active.");
+        const runLogic = async () => {
+            console.log(`\n🔄 [${new Date().toLocaleTimeString()}] Refreshing/Checking Workspace...`);
+            await page.goto(WORKSPACE_URL, { waitUntil: 'domcontentloaded', timeout: 90000 });
 
-        // Press Enter
-        await page.keyboard.press('Enter');
-        console.log("✓ Pressed Enter");
+            // --- INJECT YOUR USERSCRIPT LOGIC HERE ---
+            await page.evaluate(() => {
+                const BUTTON_SELECTOR = 'button[data-cy="ws-run-btn"]';
+                const RUN_ICON_PATH_DATA = 'M20.593 10.91a1.25 1.25 0 0 1 0 2.18l-14.48 8.145a1.25 1.25 0 0 1-1.863-1.09V3.855a1.25 1.25 0 0 1 1.863-1.09l14.48 8.146Z';
 
-        // Wait 10 seconds
-        await new Promise(r => setTimeout(r, 10000));
+                const simulateClick = (el) => {
+                    ['mousedown', 'mouseup', 'click'].forEach(t => 
+                        el.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window }))
+                    );
+                };
 
-        // Press Enter again
-        await page.keyboard.press('Enter');
-        console.log("✓ Pressed Enter again");
+                const button = document.querySelector(BUTTON_SELECTOR);
+                if (button) {
+                    const iconPath = button.querySelector('svg path');
+                    if (iconPath && iconPath.getAttribute('d') === RUN_ICON_PATH_DATA) {
+                        simulateClick(button);
+                        console.log('Injected Script: Found RUN icon. Clicking!');
+                    } else {
+                        console.log('Injected Script: Icon is NOT Run (Triangle). Skipping.');
+                    }
+                }
+            });
+            // ------------------------------------------
 
-        // Save cookies
-        const currentCookies = await page.cookies();
-        fs.writeFileSync(cookiesPath, JSON.stringify(currentCookies, null, 2));
+            const cookies = await page.cookies();
+            fs.writeFileSync(cookiesPath, JSON.stringify(cookies, null, 2));
+        };
 
-        // Refresh loop
-        setInterval(async () => {
-            try {
-                console.log(`\n🔄 [${new Date().toLocaleTimeString()}] Refreshing...`);
-                await page.goto(WORKSPACE_URL, { waitUntil: 'domcontentloaded', timeout: 90000 });
-                await page.keyboard.press('Enter');
-                await new Promise(r => setTimeout(r, 10000));
-                await page.keyboard.press('Enter');
+        // Initial Run
+        await runLogic();
 
-                const updatedCookies = await page.cookies();
-                fs.writeFileSync(cookiesPath, JSON.stringify(updatedCookies, null, 2));
-            } catch (e) {
-                console.log('✗ Refresh failed:', e.message);
-            }
-        }, 5 * 60 * 1000); 
+        // Run every 5 minutes to keep page fresh
+        setInterval(runLogic, 5 * 60 * 1000);
 
         await new Promise(() => {});
-
     } catch (err) {
         console.error("Error:", err.message);
-        console.log("Retrying in 30 seconds...");
         setTimeout(() => startBrowser(), 30000);
     }
 }

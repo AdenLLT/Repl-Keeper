@@ -74,7 +74,7 @@ async function startBrowser() {
         console.log("✓ Workspace loaded!");
 
         // Press Enter
-        await page.keyboard.press('Enter');
+        await page.type(String.fromCharCode(13));
         console.log("✓ Pressed Enter");
 
         // Wait 10 seconds
@@ -82,7 +82,7 @@ async function startBrowser() {
         await page.waitForTimeout(10000);
 
         // Press Enter again
-        await page.keyboard.press('Enter');
+        await page.type(String.fromCharCode(13));
         console.log("✓ Pressed Enter again");
 
         // Save cookies after initial load

@@ -75,11 +75,19 @@ async function startBrowser() {
 
         await page.waitForTimeout(5000);
 
-        // Press 'M' key twice
+        // Wait 10 seconds before pressing 'M' key twice
+        console.log("Waiting 10 seconds before pressing 'M' key...");
+        await page.waitForTimeout(10000);
+
+        // Click on the page to ensure focus
+        await page.click('body');
+        await page.waitForTimeout(500);
+
         console.log("Pressing 'M' key twice...");
-        await page.keyboard.press('m');
-        await page.waitForTimeout(900);
-        await page.keyboard.press('m');
+        // Try multiple methods to ensure it works
+        await page.keyboard.press('KeyM');
+        await page.waitForTimeout(500);
+        await page.keyboard.press('KeyM');
         console.log("✓ Pressed 'M' key twice!");
 
         const cookies = await page.cookies();
@@ -102,11 +110,18 @@ async function startBrowser() {
 
                 await page.waitForTimeout(5000);
 
-                // Press 'M' key twice after refresh
+                // Wait 10 seconds before pressing 'M' key twice after refresh
+                console.log("Waiting 10 seconds before pressing 'M' key...");
+                await page.waitForTimeout(10000);
+
+                // Click on the page to ensure focus
+                await page.click('body');
+                await page.waitForTimeout(500);
+
                 console.log("Pressing 'M' key twice after refresh...");
-                await page.keyboard.press('m');
-                await page.waitForTimeout(900);
-                await page.keyboard.press('m');
+                await page.keyboard.press('KeyM');
+                await page.waitForTimeout(500);
+                await page.keyboard.press('KeyM');
                 console.log("✓ Pressed 'M' key twice!");
 
                 // Update cookies

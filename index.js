@@ -64,34 +64,71 @@ async function startBrowser() {
             console.log(`✓ Loaded ${cookies.length} cookies`);
         }
 
-        console.log("Navigating to Replit...");
-        await page.goto('https://replit.com/@HUDV1/mb#main.py', { 
+        const WORKSPACE_URL = 'https://replit.com/@HUDV1/mb#main.py';
+
+        console.log("Navigating to Replit workspace...");
+        await page.goto(WORKSPACE_URL, { 
             waitUntil: 'domcontentloaded',
             timeout: 90000 
         });
-        console.log("✓ Page loaded!");
+        console.log("✓ Workspace loaded!");
 
-        console.log("Waiting 10 seconds before pressing M key...");
-        await page.waitForTimeout(10000);
+        await page.waitForTimeout(5000);
 
-        console.log("Pressing M key (first time)...");
+        // Press 'M' key twice
+        console.log("Pressing 'M' key twice...");
         await page.keyboard.press('m');
-
-        await page.waitForTimeout(100);
-
-        console.log("Pressing M key (second time)...");
+        await page.waitForTimeout(500);
         await page.keyboard.press('m');
-
-        console.log("✓ M key pressed twice!");
+        console.log("✓ Pressed 'M' key twice!");
 
         const cookies = await page.cookies();
         fs.writeFileSync(cookiesPath, JSON.stringify(cookies, null, 2));
 
-        // Keep alive
+        console.log("✓ Page refresh every 6 minutes");
+        console.log("✓ Will NEVER leave workspace page\n");
+
+        // Refresh page every 6 minutes
+        setInterval(async () => {
+            try {
+                console.log(`\n🔄 [${new Date().toLocaleTimeString()}] 6-minute page refresh`);
+
+                // Always go to the workspace URL, never navigate away
+                await page.goto(WORKSPACE_URL, { 
+                    waitUntil: 'domcontentloaded', 
+                    timeout: 90000 
+                });
+                console.log('✓ Workspace refreshed');
+
+                await page.waitForTimeout(5000);
+
+                // Press 'M' key twice after refresh
+                console.log("Pressing 'M' key twice after refresh...");
+                await page.keyboard.press('m');
+                await page.waitForTimeout(500);
+                await page.keyboard.press('m');
+                console.log("✓ Pressed 'M' key twice!");
+
+                // Update cookies
+                const cookies = await page.cookies();
+                fs.writeFileSync(cookiesPath, JSON.stringify(cookies, null, 2));
+            } catch (e) {
+                console.log('✗ Refresh failed:', e.message);
+                // Try to get back to workspace
+                try {
+                    await page.goto(WORKSPACE_URL, { waitUntil: 'domcontentloaded', timeout: 90000 });
+                } catch (err) {
+                    console.log('✗ Could not return to workspace:', err.message);
+                }
+            }
+        }, 6 * 60 * 1000); // 6 minutes
+
+        // Keep alive forever
         await new Promise(() => {});
 
     } catch (err) {
         console.error("Error:", err.message);
+        console.log("Retrying in 30 seconds...");
         setTimeout(() => startBrowser(), 30000);
     }
 }

@@ -21,7 +21,6 @@ function findChrome() {
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Clean up Chrome lock files
 function cleanupLockFiles(userDataDir) {
     try {
         const lockFile = path.join(userDataDir, 'SingletonLock');
@@ -43,7 +42,6 @@ async function startBrowser() {
     const cookiesPath = path.join(__dirname, 'replit_cookies.json');
 
     try {
-        // Clean up any leftover lock files
         cleanupLockFiles(userDataDir);
 
         const chromePath = findChrome();
@@ -63,7 +61,9 @@ async function startBrowser() {
         if (fs.existsSync(cookiesPath)) {
             const cookies = JSON.parse(fs.readFileSync(cookiesPath, 'utf8'));
             await page.setCookie(...cookies);
-            console.log(`✓ Cookies loaded`);
+            console.log(`✓ Cookies loaded (${cookies.length} cookies)`);
+        } else {
+            console.log('⚠️  No cookies found - you may need to log in first!');
         }
 
         const WORKSPACE_URL = 'https://replit.com/@HUDV1/mb#main.py';
@@ -72,20 +72,66 @@ async function startBrowser() {
             console.log(`\n🔄 [${new Date().toLocaleTimeString()}] Refreshing/Checking Workspace...`);
 
             try {
-                // Increased timeout to 3 minutes for slow loads
                 await page.goto(WORKSPACE_URL, { waitUntil: 'domcontentloaded', timeout: 180000 });
 
-                console.log('⏳ Waiting for Replit interface to fully load (25 seconds)...');
-                await sleep(25000);
+                console.log('⏳ Waiting for Replit interface to fully load (30 seconds)...');
+                await sleep(30000);
 
-                // Click the run button 3 times with 10 second delays
-                for (let i = 1; i <= 3; i++) {
-                    console.log(`\n🎯 Attempt ${i}/3 - Looking for run button...`);
+                // Debug: Check what's actually on the page
+                const pageInfo = await page.evaluate(() => {
+                    return {
+                        title: document.title,
+                        url: window.location.href,
+                        hasRunButton: !!document.querySelector('button[data-cy="ws-run-btn"]'),
+                        allDataCyButtons: Array.from(document.querySelectorAll('button[data-cy]')).map(b => ({
+                            dataCy: b.getAttribute('data-cy'),
+                            ariaLabel: b.getAttribute('aria-label'),
+                            visible: b.offsetParent !== null
+                        })),
+                        allButtons: Array.from(document.querySelectorAll('button')).length,
+                        bodyTextStart: document.body.innerText.substring(0, 1000),
+                        htmlSnippet: document.body.innerHTML.substring(0, 2000)
+                    };
+                });
 
-                    try {
-                        // Wait for the button to appear
-                        await page.waitForSelector('button[data-cy="ws-run-btn"]', { timeout: 15000 });
-                        console.log('✓ Button found in DOM');
+                console.log('\n' + '='.repeat(80));
+                console.log('📊 PAGE DEBUG INFO');
+                console.log('='.repeat(80));
+                console.log('Title:', pageInfo.title);
+                console.log('URL:', pageInfo.url);
+                console.log('Total buttons:', pageInfo.allButtons);
+                console.log('Run button found:', pageInfo.hasRunButton);
+
+                console.log('\n🔘 All buttons with data-cy attribute:');
+                if (pageInfo.allDataCyButtons.length === 0) {
+                    console.log('   ⚠️  NO BUTTONS WITH data-cy FOUND!');
+                } else {
+                    pageInfo.allDataCyButtons.forEach((btn, i) => {
+                        console.log(`   ${i + 1}. data-cy="${btn.dataCy}" aria-label="${btn.ariaLabel}" visible=${btn.visible}`);
+                    });
+                }
+
+                console.log('\n📄 Body text (first 500 chars):');
+                console.log(pageInfo.bodyTextStart.substring(0, 500));
+
+                console.log('\n🔍 HTML snippet (first 1000 chars):');
+                console.log(pageInfo.htmlSnippet.substring(0, 1000));
+                console.log('='.repeat(80) + '\n');
+
+                if (!pageInfo.hasRunButton) {
+                    console.log('\n⚠️  RUN BUTTON NOT FOUND!');
+                    console.log('Possible reasons:');
+                    console.log('   1. ❌ Not logged in - cookies expired or invalid');
+                    console.log('   2. ❌ Page showing login/signup screen');
+                    console.log('   3. ❌ Workspace requires authentication');
+                    console.log('   4. ❌ Page structure changed');
+                    console.log('   5. ❌ JavaScript not fully loaded\n');
+                }
+
+                // Try clicking only if button exists
+                if (pageInfo.hasRunButton) {
+                    for (let i = 1; i <= 3; i++) {
+                        console.log(`\n🎯 Attempt ${i}/3 - Clicking run button...`);
 
                         const result = await page.evaluate(() => {
                             const button = document.querySelector('button[data-cy="ws-run-btn"]');
@@ -94,7 +140,6 @@ async function startBrowser() {
                                 return { success: false, reason: 'Button not found' };
                             }
 
-                            // Check if it's the RUN button (not STOP)
                             const path = button.querySelector('svg path');
                             if (!path) {
                                 return { success: false, reason: 'No SVG path found' };
@@ -106,12 +151,11 @@ async function startBrowser() {
                             if (pathD !== runIconPath) {
                                 return { 
                                     success: false, 
-                                    reason: 'Button is not in RUN state (probably STOP)',
-                                    pathPreview: pathD ? pathD.substring(0, 30) + '...' : 'null'
+                                    reason: 'Button is not in RUN state',
+                                    pathPreview: pathD ? pathD.substring(0, 40) + '...' : 'null'
                                 };
                             }
 
-                            // Trigger React's pressable events
                             const events = [
                                 new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerId: 1 }),
                                 new MouseEvent('mousedown', { bubbles: true, cancelable: true }),
@@ -121,36 +165,31 @@ async function startBrowser() {
                             ];
 
                             events.forEach(event => button.dispatchEvent(event));
-
-                            // Also try direct click
                             button.click();
 
                             return { success: true, reason: 'Clicked RUN button' };
                         });
 
                         if (result.success) {
-                            console.log(`✅ Click ${i}/3 successful! ${result.reason}`);
+                            console.log(`✅ Click ${i}/3 successful!`);
                         } else {
                             console.log(`⚠️  Click ${i}/3 failed: ${result.reason}`);
                             if (result.pathPreview) {
-                                console.log(`   Path preview: ${result.pathPreview}`);
+                                console.log(`   Path: ${result.pathPreview}`);
                             }
                         }
 
-                    } catch (err) {
-                        console.log(`❌ Click ${i}/3 error: ${err.message}`);
+                        if (i < 3) {
+                            console.log(`⏱️  Waiting 10 seconds...`);
+                            await sleep(10000);
+                        }
                     }
 
-                    // Wait 10 seconds before next click (except after the last one)
-                    if (i < 3) {
-                        console.log(`⏱️  Waiting 10 seconds before next click...`);
-                        await sleep(10000);
-                    }
+                    console.log(`\n✅ Completed all 3 click attempts`);
+                } else {
+                    console.log('⏭️  Skipping clicks - button not found\n');
                 }
 
-                console.log(`\n✅ Completed all 3 click attempts`);
-
-                // Save cookies
                 const cookies = await page.cookies();
                 fs.writeFileSync(cookiesPath, JSON.stringify(cookies, null, 2));
 
@@ -159,10 +198,7 @@ async function startBrowser() {
             }
         };
 
-        // Initial Run
         await runLogic();
-
-        // Run every 5 minutes
         setInterval(runLogic, 5 * 60 * 1000);
 
         await new Promise(() => {});
@@ -170,7 +206,6 @@ async function startBrowser() {
     } catch (err) {
         console.error("Error:", err.message);
 
-        // Properly close browser if it exists
         if (browser) {
             try {
                 await browser.close();
@@ -180,9 +215,7 @@ async function startBrowser() {
             }
         }
 
-        // Clean up lock files before restarting
         cleanupLockFiles(userDataDir);
-
         console.log('⏳ Restarting in 30 seconds...');
         setTimeout(() => startBrowser(), 30000);
     }

@@ -26,38 +26,6 @@ function findChrome() {
     throw new Error('Chrome executable not found');
 }
 
-async function pressEnterKey(page) {
-    try {
-        // Method 1: Click body to ensure focus
-        await page.evaluate(() => document.body.click());
-        await page.waitForTimeout(500);
-
-        // Method 2: Use multiple Enter key approaches
-        await page.keyboard.press('Enter');
-        console.log("  ✓ Pressed Enter via keyboard.press");
-
-        // Method 3: Direct DOM event dispatch
-        await page.evaluate(() => {
-            const event = new KeyboardEvent('keydown', {
-                key: 'Enter',
-                code: 'Enter',
-                keyCode: 13,
-                which: 13,
-                bubbles: true
-            });
-            document.dispatchEvent(event);
-        });
-        console.log("  ✓ Dispatched Enter event via evaluate");
-
-        // Method 4: Alternative key codes
-        await page.keyboard.press('\n');
-        console.log("  ✓ Pressed Enter via \\n");
-
-    } catch (e) {
-        console.log("⚠️  Enter key press had issues:", e.message);
-    }
-}
-
 async function startBrowser() {
     console.log("Starting browser...");
     try {
@@ -105,20 +73,6 @@ async function startBrowser() {
         });
         console.log("✓ Workspace loaded!");
 
-        await page.waitForTimeout(2000);
-
-        // Press Enter first time
-        console.log("Pressing Enter (first time)...");
-        await pressEnterKey(page);
-
-        // Wait 10 seconds
-        console.log("Waiting 10 seconds...");
-        await page.waitForTimeout(10000);
-
-        // Press Enter second time
-        console.log("Pressing Enter (second time)...");
-        await pressEnterKey(page);
-
         // Save cookies after initial load
         const cookies = await page.cookies();
         fs.writeFileSync(cookiesPath, JSON.stringify(cookies, null, 2));
@@ -137,20 +91,6 @@ async function startBrowser() {
                     timeout: 90000 
                 });
                 console.log('✓ Workspace reloaded (stayed on same page)');
-
-                await page.waitForTimeout(2000);
-
-                // Press Enter first time
-                console.log("Pressing Enter (first time)...");
-                await pressEnterKey(page);
-
-                // Wait 10 seconds
-                console.log("Waiting 10 seconds...");
-                await page.waitForTimeout(10000);
-
-                // Press Enter second time
-                console.log("Pressing Enter (second time)...");
-                await pressEnterKey(page);
 
                 // Update cookies after refresh
                 const cookies = await page.cookies();

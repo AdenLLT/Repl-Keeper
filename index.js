@@ -93,6 +93,16 @@ async function startBrowser() {
                 console.log(`\n📊 Found ${buttons.length} buttons with type="button"`);
                 console.log('='.repeat(80));
 
+                // Type "HI" in input field before clicking buttons
+                console.log('\n⌨️  Typing "HI" in input field...');
+                try {
+                    await page.type(':rn:-input', 'HI');
+                    console.log('✅ Successfully typed "HI"');
+                } catch (err) {
+                    console.log(`⚠️  Failed to type in input: ${err.message}`);
+                }
+                console.log('');
+
                 // Click each button with 1 minute delay
                 for (let i = 0; i < buttons.length; i++) {
                     const btnInfo = buttons[i];

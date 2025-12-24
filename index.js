@@ -69,6 +69,50 @@ const tampermonkeyScript = `
 })();
 `;
 
+async function checkButton(page) {
+    try {
+        console.log('🔍 Manually checking for Run button...');
+        const buttonExists = await page.evaluate(() => {
+            const BUTTON_SELECTOR = 'button[data-cy="ws-run-btn"]';
+            const RUN_ICON_PATH_DATA = 'M20.593 10.91a1.25 1.25 0 0 1 0 2.18l-14.48 8.145a1.25 1.25 0 0 1-1.863-1.09V3.855a1.25 1.25 0 0 1 1.863-1.09l14.48 8.146Z';
+
+            const button = document.querySelector(BUTTON_SELECTOR);
+
+            if (button) {
+                const iconPath = button.querySelector('svg path');
+
+                if (iconPath && iconPath.getAttribute('d') === RUN_ICON_PATH_DATA) {
+                    const dispatchEvent = (type) => {
+                        const event = new MouseEvent(type, {
+                            bubbles: true,
+                            cancelable: true,
+                            view: window
+                        });
+                        button.dispatchEvent(event);
+                    };
+                    dispatchEvent('mousedown');
+                    dispatchEvent('mouseup');
+                    dispatchEvent('click');
+                    return 'CLICKED';
+                } else {
+                    return 'RUNNING';
+                }
+            }
+            return 'NOT_FOUND';
+        });
+
+        if (buttonExists === 'CLICKED') {
+            console.log('✅ Manually clicked Run button!');
+        } else if (buttonExists === 'RUNNING') {
+            console.log('⏸️  App is already running');
+        } else {
+            console.log('❌ Button not found');
+        }
+    } catch (error) {
+        console.log('Error checking button:', error.message);
+    }
+}
+
 async function startBrowser() {
     console.log("Starting browser...");
     try {
@@ -97,7 +141,7 @@ async function startBrowser() {
 
         const page = await browser.newPage();
 
-        // Inject Tampermonkey script
+        // Inject Tampermonkey script on EVERY new document
         await page.evaluateOnNewDocument(tampermonkeyScript);
 
         await page.setViewport({ width: 1920, height: 1080 });
@@ -110,12 +154,14 @@ async function startBrowser() {
             console.log(`✓ Loaded ${cookies.length} cookies`);
         }
 
-        console.log("Navigating to Replit...");
-        await page.goto('https://replit.com/@HUDV1/mb#main.py', { 
+        const WORKSPACE_URL = 'https://replit.com/@HUDV1/mb#main.py';
+
+        console.log("Navigating to Replit workspace...");
+        await page.goto(WORKSPACE_URL, { 
             waitUntil: 'domcontentloaded',
             timeout: 90000 
         });
-        console.log("✓ Page loaded with Tampermonkey script!");
+        console.log("✓ Workspace loaded with Tampermonkey script!");
 
         await page.waitForTimeout(5000);
 
@@ -123,12 +169,62 @@ async function startBrowser() {
         fs.writeFileSync(cookiesPath, JSON.stringify(cookies, null, 2));
 
         console.log("✓ Tampermonkey script is running!");
+        console.log("✓ Manual button check every 5 minutes");
+        console.log("✓ Page refresh every 6 minutes");
+        console.log("✓ Will NEVER leave workspace page\n");
 
-        // Keep alive
+        // Check button every 5 minutes
+        setInterval(async () => {
+            console.log(`\n⏰ [${new Date().toLocaleTimeString()}] 5-minute button check`);
+
+            // Make sure we're still on the workspace page
+            const currentUrl = page.url();
+            if (!currentUrl.includes('replit.com/@HUDV1/mb')) {
+                console.log('⚠️  OFF WORKSPACE PAGE! Navigating back...');
+                await page.goto(WORKSPACE_URL, { waitUntil: 'domcontentloaded', timeout: 90000 });
+                await page.waitForTimeout(5000);
+            }
+
+            await checkButton(page);
+        }, 5 * 60 * 1000); // 5 minutes
+
+        // Refresh page every 6 minutes
+        setInterval(async () => {
+            try {
+                console.log(`\n🔄 [${new Date().toLocaleTimeString()}] 6-minute page refresh`);
+
+                // Always go to the workspace URL, never navigate away
+                await page.goto(WORKSPACE_URL, { 
+                    waitUntil: 'domcontentloaded', 
+                    timeout: 90000 
+                });
+                console.log('✓ Workspace refreshed');
+
+                await page.waitForTimeout(5000);
+
+                // Update cookies
+                const cookies = await page.cookies();
+                fs.writeFileSync(cookiesPath, JSON.stringify(cookies, null, 2));
+
+                // Check button after refresh
+                await checkButton(page);
+            } catch (e) {
+                console.log('✗ Refresh failed:', e.message);
+                // Try to get back to workspace
+                try {
+                    await page.goto(WORKSPACE_URL, { waitUntil: 'domcontentloaded', timeout: 90000 });
+                } catch (err) {
+                    console.log('✗ Could not return to workspace:', err.message);
+                }
+            }
+        }, 6 * 60 * 1000); // 6 minutes
+
+        // Keep alive forever
         await new Promise(() => {});
 
     } catch (err) {
         console.error("Error:", err.message);
+        console.log("Retrying in 30 seconds...");
         setTimeout(() => startBrowser(), 30000);
     }
 }

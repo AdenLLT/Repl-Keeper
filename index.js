@@ -116,7 +116,7 @@ async function startBrowser() {
 
                     try {
                         await page.mouse.click(150, 17);
-                        console.log(`✅ Click ${i}/3 completed at X:150, Y:17`);
+                        console.log(`✅ Click ${i}/3 completed at X:120, Y:17`);
                     } catch (err) {
                         console.log(`⚠️  Click ${i}/3 failed: ${err.message}`);
                     }

@@ -96,7 +96,7 @@ async function startBrowser() {
                 // Type "HI" in input field before clicking buttons
                 console.log('\n⌨️  Typing "HI" in input field...');
                 try {
-                    await page.type(':rn:-input', 'HI');
+                    await page.type('#:rn:-input', 'HI');
                     console.log('✅ Successfully typed "HI"');
                 } catch (err) {
                     console.log(`⚠️  Failed to type in input: ${err.message}`);

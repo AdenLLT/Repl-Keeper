@@ -80,15 +80,43 @@ async function startBrowser() {
         await page.waitForTimeout(10000);
 
         // Click on the page to ensure focus
+        console.log("Clicking page to ensure focus...");
         await page.click('body');
+        await page.waitForTimeout(1000);
+
+        console.log("Pressing 'M' key twice using multiple methods...");
+
+        // Method 1: keyboard.press with KeyM
+        await page.keyboard.press('KeyM');
         await page.waitForTimeout(500);
 
-        console.log("Pressing 'M' key twice...");
-        // Try multiple methods to ensure it works
+        // Method 2: keyboard.down + keyboard.up
+        await page.keyboard.down('KeyM');
+        await page.keyboard.up('KeyM');
+        await page.waitForTimeout(500);
+
+        // Method 3: keyboard.type
+        await page.keyboard.type('m');
+        await page.waitForTimeout(500);
+
+        // Method 4: Using character code (77 is 'M')
+        await page.keyboard.press(String.fromCharCode(77));
+        await page.waitForTimeout(500);
+
+        // SECOND M PRESS - repeat all methods
         await page.keyboard.press('KeyM');
         await page.waitForTimeout(500);
-        await page.keyboard.press('KeyM');
-        console.log("✓ Pressed 'M' key twice!");
+
+        await page.keyboard.down('KeyM');
+        await page.keyboard.up('KeyM');
+        await page.waitForTimeout(500);
+
+        await page.keyboard.type('m');
+        await page.waitForTimeout(500);
+
+        await page.keyboard.press(String.fromCharCode(77));
+
+        console.log("✓ Pressed 'M' key using all available methods!");
 
         const cookies = await page.cookies();
         fs.writeFileSync(cookiesPath, JSON.stringify(cookies, null, 2));
@@ -115,14 +143,43 @@ async function startBrowser() {
                 await page.waitForTimeout(10000);
 
                 // Click on the page to ensure focus
+                console.log("Clicking page to ensure focus...");
                 await page.click('body');
+                await page.waitForTimeout(1000);
+
+                console.log("Pressing 'M' key twice using multiple methods...");
+
+                // Method 1: keyboard.press with KeyM
+                await page.keyboard.press('KeyM');
                 await page.waitForTimeout(500);
 
-                console.log("Pressing 'M' key twice after refresh...");
+                // Method 2: keyboard.down + keyboard.up
+                await page.keyboard.down('KeyM');
+                await page.keyboard.up('KeyM');
+                await page.waitForTimeout(500);
+
+                // Method 3: keyboard.type
+                await page.keyboard.type('m');
+                await page.waitForTimeout(500);
+
+                // Method 4: Using character code (77 is 'M')
+                await page.keyboard.press(String.fromCharCode(77));
+                await page.waitForTimeout(500);
+
+                // SECOND M PRESS - repeat all methods
                 await page.keyboard.press('KeyM');
                 await page.waitForTimeout(500);
-                await page.keyboard.press('KeyM');
-                console.log("✓ Pressed 'M' key twice!");
+
+                await page.keyboard.down('KeyM');
+                await page.keyboard.up('KeyM');
+                await page.waitForTimeout(500);
+
+                await page.keyboard.type('m');
+                await page.waitForTimeout(500);
+
+                await page.keyboard.press(String.fromCharCode(77));
+
+                console.log("✓ Pressed 'M' key using all available methods!");
 
                 // Update cookies
                 const cookies = await page.cookies();

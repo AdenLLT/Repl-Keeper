@@ -79,55 +79,70 @@ async function startBrowser() {
         console.log("Waiting 10 seconds before pressing 'M' key...");
         await page.waitForTimeout(10000);
 
-        // Click on the page to ensure focus
+        // Click on the page to ensure focus (with error handling)
         console.log("Clicking page to ensure focus...");
-        await page.click('body');
+        try {
+            await page.evaluate(() => document.body.click());
+            console.log("✓ Page focused");
+        } catch (e) {
+            console.log("⚠️  Click failed, continuing anyway:", e.message);
+        }
         await page.waitForTimeout(1000);
 
         console.log("Pressing 'M' key twice using multiple methods...");
 
         // Method 1: keyboard.press with KeyM
         await page.keyboard.press('KeyM');
+        console.log("  ✓ Method 1: KeyM");
         await page.waitForTimeout(500);
 
         // Method 2: keyboard.down + keyboard.up
         await page.keyboard.down('KeyM');
         await page.keyboard.up('KeyM');
+        console.log("  ✓ Method 2: down/up KeyM");
         await page.waitForTimeout(500);
 
         // Method 3: keyboard.type
         await page.keyboard.type('m');
+        console.log("  ✓ Method 3: type 'm'");
         await page.waitForTimeout(500);
 
         // Method 4: Using character code (77 is 'M')
         await page.keyboard.press(String.fromCharCode(77));
+        console.log("  ✓ Method 4: char code 77");
         await page.waitForTimeout(500);
+
+        console.log("SECOND M PRESS:");
 
         // SECOND M PRESS - repeat all methods
         await page.keyboard.press('KeyM');
+        console.log("  ✓ Method 1: KeyM");
         await page.waitForTimeout(500);
 
         await page.keyboard.down('KeyM');
         await page.keyboard.up('KeyM');
+        console.log("  ✓ Method 2: down/up KeyM");
         await page.waitForTimeout(500);
 
         await page.keyboard.type('m');
+        console.log("  ✓ Method 3: type 'm'");
         await page.waitForTimeout(500);
 
         await page.keyboard.press(String.fromCharCode(77));
+        console.log("  ✓ Method 4: char code 77");
 
         console.log("✓ Pressed 'M' key using all available methods!");
 
         const cookies = await page.cookies();
         fs.writeFileSync(cookiesPath, JSON.stringify(cookies, null, 2));
 
-        console.log("✓ Page refresh every 6 minutes");
+        console.log("✓ Page refresh every 1 minute (TESTING MODE)");
         console.log("✓ Will NEVER leave workspace page\n");
 
-        // Refresh page every 6 minutes
+        // Refresh page every 1 MINUTE (for testing)
         setInterval(async () => {
             try {
-                console.log(`\n🔄 [${new Date().toLocaleTimeString()}] 6-minute page refresh`);
+                console.log(`\n🔄 [${new Date().toLocaleTimeString()}] 1-minute page refresh (TESTING)`);
 
                 // Always go to the workspace URL, never navigate away
                 await page.goto(WORKSPACE_URL, { 
@@ -142,42 +157,57 @@ async function startBrowser() {
                 console.log("Waiting 10 seconds before pressing 'M' key...");
                 await page.waitForTimeout(10000);
 
-                // Click on the page to ensure focus
+                // Click on the page to ensure focus (with error handling)
                 console.log("Clicking page to ensure focus...");
-                await page.click('body');
+                try {
+                    await page.evaluate(() => document.body.click());
+                    console.log("✓ Page focused");
+                } catch (e) {
+                    console.log("⚠️  Click failed, continuing anyway:", e.message);
+                }
                 await page.waitForTimeout(1000);
 
                 console.log("Pressing 'M' key twice using multiple methods...");
 
                 // Method 1: keyboard.press with KeyM
                 await page.keyboard.press('KeyM');
+                console.log("  ✓ Method 1: KeyM");
                 await page.waitForTimeout(500);
 
                 // Method 2: keyboard.down + keyboard.up
                 await page.keyboard.down('KeyM');
                 await page.keyboard.up('KeyM');
+                console.log("  ✓ Method 2: down/up KeyM");
                 await page.waitForTimeout(500);
 
                 // Method 3: keyboard.type
                 await page.keyboard.type('m');
+                console.log("  ✓ Method 3: type 'm'");
                 await page.waitForTimeout(500);
 
                 // Method 4: Using character code (77 is 'M')
                 await page.keyboard.press(String.fromCharCode(77));
+                console.log("  ✓ Method 4: char code 77");
                 await page.waitForTimeout(500);
+
+                console.log("SECOND M PRESS:");
 
                 // SECOND M PRESS - repeat all methods
                 await page.keyboard.press('KeyM');
+                console.log("  ✓ Method 1: KeyM");
                 await page.waitForTimeout(500);
 
                 await page.keyboard.down('KeyM');
                 await page.keyboard.up('KeyM');
+                console.log("  ✓ Method 2: down/up KeyM");
                 await page.waitForTimeout(500);
 
                 await page.keyboard.type('m');
+                console.log("  ✓ Method 3: type 'm'");
                 await page.waitForTimeout(500);
 
                 await page.keyboard.press(String.fromCharCode(77));
+                console.log("  ✓ Method 4: char code 77");
 
                 console.log("✓ Pressed 'M' key using all available methods!");
 
@@ -193,7 +223,7 @@ async function startBrowser() {
                     console.log('✗ Could not return to workspace:', err.message);
                 }
             }
-        }, 6 * 60 * 1000); // 6 minutes
+        }, 1 * 60 * 1000); // 1 MINUTE (for testing)
 
         // Keep alive forever
         await new Promise(() => {});

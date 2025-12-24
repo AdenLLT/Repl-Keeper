@@ -4,8 +4,10 @@ const fs = require('fs');
 const path = require('path');
 const app = express();
 
+// Option 1: Serve the userscripts folder so the browser can download the script via HTTP
+app.use('/scripts', express.static(path.join(__dirname, 'userscripts')));
 app.get('/', (req, res) => res.send('Keeper is Active'));
-app.listen(8080);
+app.listen(8080, () => console.log("✓ Local server hosting scripts on port 8080"));
 
 function findChrome() {
     const paths = [
@@ -22,7 +24,6 @@ function findChrome() {
             return path;
         }
     }
-
     throw new Error('Chrome executable not found');
 }
 
@@ -33,15 +34,15 @@ async function startBrowser() {
         const userDataDir = path.join(__dirname, 'chrome_user_data');
         const cookiesPath = path.join(__dirname, 'replit_cookies.json');
         const extensionPath = path.join(__dirname, 'tampermonkey-extension');
-        const userScriptPath = path.join(__dirname, 'userscripts/replit-keeper.user.js');
+
+        // This is the filename inside your userscripts/ folder
+        const scriptFileName = 'replit-keeper.user.js'; 
 
         if (!fs.existsSync(userDataDir)) {
             fs.mkdirSync(userDataDir, { recursive: true });
         }
 
         const browser = await puppeteer.launch({
-            // Headless "new" supports extensions in newer Puppeteer versions, 
-            // but if it fails, use headless: false
             headless: "new", 
             executablePath: chromePath,
             userDataDir: userDataDir,
@@ -60,14 +61,14 @@ async function startBrowser() {
 
         const page = await browser.newPage();
 
-        // --- INSTALL USERSCRIPT INTO THE EXTENSION ---
-        console.log("Triggering Userscript installation...");
-        await page.goto(`file://${userScriptPath}`);
-        // Small delay to allow the extension to catch the file and show the install screen
-        await new Promise(r => setTimeout(r, 2000)); 
+        // --- INSTALL USERSCRIPT VIA LOCALHOST (FIXES ERR_ABORTED) ---
+        console.log(`Triggering Userscript installation from http://localhost:8080/scripts/${scriptFileName}`);
 
-        // Note: You may need to manually click 'Install' once if not auto-configured, 
-        // but this loads the script into the session.
+        // Navigating to the HTTP URL allows Tampermonkey to detect the .user.js extension
+        await page.goto(`http://localhost:8080/scripts/${scriptFileName}`, { waitUntil: 'networkidle0' });
+
+        // Wait for Tampermonkey to parse the script and open the install tab
+        await new Promise(r => setTimeout(r, 3000)); 
 
         await page.setViewport({ width: 1920, height: 1080 });
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
@@ -86,63 +87,36 @@ async function startBrowser() {
             waitUntil: 'domcontentloaded',
             timeout: 90000 
         });
-        console.log("✓ Workspace loaded! Tampermonkey is now active on the page.");
+        console.log("✓ Workspace loaded! Tampermonkey is now active.");
 
         // Press Enter
         await page.keyboard.press('Enter');
         console.log("✓ Pressed Enter");
 
         // Wait 10 seconds
-        console.log("Waiting 10 seconds...");
         await new Promise(r => setTimeout(r, 10000));
 
         // Press Enter again
         await page.keyboard.press('Enter');
         console.log("✓ Pressed Enter again");
 
-        // Save cookies after initial load
-        const cookies = await page.cookies();
-        fs.writeFileSync(cookiesPath, JSON.stringify(cookies, null, 2));
+        // Save cookies
+        const currentCookies = await page.cookies();
+        fs.writeFileSync(cookiesPath, JSON.stringify(currentCookies, null, 2));
 
-        console.log("✓ Page will refresh every 5 minutes");
-        console.log("✓ Staying on workspace page continuously\n");
-
-        // Refresh page every 5 minutes
+        // Refresh loop
         setInterval(async () => {
             try {
-                console.log(`\n🔄 [${new Date().toLocaleTimeString()}] Refreshing workspace...`);
-
-                await page.goto(WORKSPACE_URL, { 
-                    waitUntil: 'domcontentloaded', 
-                    timeout: 90000 
-                });
-                console.log('✓ Workspace refreshed successfully');
-
-                // Press Enter
+                console.log(`\n🔄 [${new Date().toLocaleTimeString()}] Refreshing...`);
+                await page.goto(WORKSPACE_URL, { waitUntil: 'domcontentloaded', timeout: 90000 });
                 await page.keyboard.press('Enter');
-                console.log("✓ Pressed Enter");
-
-                // Wait 10 seconds
                 await new Promise(r => setTimeout(r, 10000));
-
-                // Press Enter again
                 await page.keyboard.press('Enter');
-                console.log("✓ Pressed Enter again");
 
-                // Update cookies after refresh
-                const cookies = await page.cookies();
-                fs.writeFileSync(cookiesPath, JSON.stringify(cookies, null, 2));
+                const updatedCookies = await page.cookies();
+                fs.writeFileSync(cookiesPath, JSON.stringify(updatedCookies, null, 2));
             } catch (e) {
                 console.log('✗ Refresh failed:', e.message);
-                try {
-                    await page.goto(WORKSPACE_URL, { 
-                        waitUntil: 'domcontentloaded', 
-                        timeout: 90000 
-                    });
-                    console.log('✓ Recovered and back on workspace');
-                } catch (err) {
-                    console.log('✗ Could not return to workspace:', err.message);
-                }
             }
         }, 5 * 60 * 1000); 
 

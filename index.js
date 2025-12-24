@@ -4,6 +4,13 @@ const fs = require('fs');
 const path = require('path');
 const app = express();
 
+// --- Configuration ---
+const WORKSPACE_URL = 'https://replit.com/@HUDV1/mb#main.py';
+const CHECK_INTERVAL_MINUTES = 1; 
+const CHECK_DURATION_SECONDS = 10;
+const CHECK_FREQUENCY_MS = 2000; // Check every 2 seconds during the 10-second window
+// ---------------------
+
 app.get('/', (req, res) => res.send('Keeper is Active'));
 app.listen(8080);
 
@@ -30,6 +37,7 @@ async function checkAndClickRunButton(page) {
     try {
         const result = await page.evaluate(() => {
             const BUTTON_SELECTOR = 'button[data-cy="ws-run-btn"]';
+            // The exact path data for the Play/Run triangle icon
             const RUN_ICON_PATH_DATA = 'M20.593 10.91a1.25 1.25 0 0 1 0 2.18l-14.48 8.145a1.25 1.25 0 0 1-1.863-1.09V3.855a1.25 1.25 0 0 1 1.863-1.09l14.48 8.146Z';
 
             const button = document.querySelector(BUTTON_SELECTOR);
@@ -37,30 +45,23 @@ async function checkAndClickRunButton(page) {
             if (button) {
                 const iconPath = button.querySelector('svg path');
 
-                if (iconPath) {
-                    const pathData = iconPath.getAttribute('d');
+                if (iconPath && iconPath.getAttribute('d') === RUN_ICON_PATH_DATA) {
+                    // It is the RUN icon! Execute the click simulation.
+                    const dispatchEvent = (type) => {
+                        const event = new MouseEvent(type, {
+                            bubbles: true,
+                            cancelable: true,
+                            view: window
+                        });
+                        button.dispatchEvent(event);
+                    };
+                    dispatchEvent('mousedown');
+                    dispatchEvent('mouseup');
+                    dispatchEvent('click');
 
-                    // Only check if it's the RUN icon
-                    if (pathData === RUN_ICON_PATH_DATA) {
-                        // Click it!
-                        const dispatchEvent = (type) => {
-                            const event = new MouseEvent(type, {
-                                bubbles: true,
-                                cancelable: true,
-                                view: window
-                            });
-                            button.dispatchEvent(event);
-                        };
-                        dispatchEvent('mousedown');
-                        dispatchEvent('mouseup');
-                        dispatchEvent('click');
-
-                        return { status: 'CLICKED' };
-                    } else {
-                        return { status: 'RUNNING' };
-                    }
+                    return { status: 'CLICKED' };
                 } else {
-                    return { status: 'NO_PATH' };
+                    return { status: 'RUNNING' };
                 }
             } else {
                 return { status: 'NO_BUTTON' };
@@ -70,23 +71,61 @@ async function checkAndClickRunButton(page) {
         if (result.status === 'CLICKED') {
             console.log('✅ CLICKED RUN BUTTON!');
         } else if (result.status === 'RUNNING') {
-            console.log('✓ App is running');
-        } else if (result.status === 'NO_PATH') {
-            console.log('⚠️  Button found but no path');
-        } else {
-            console.log('⚠️  Button not found');
+            // This is the expected status when the script is working correctly (App is running)
+            // We can break the 10-second check early if we see this status
+            console.log('✓ App is running (checked icon)');
+        } else if (result.status === 'NO_BUTTON') {
+            console.log('⚠️  Button not found (App might be starting)');
         }
 
         return result.status;
     } catch (error) {
-        console.log('❌ Error:', error.message);
+        console.log('❌ Puppeteer Error during check:', error.message);
         return 'ERROR';
     }
 }
 
+// --- NEW SCHEDULING LOGIC ---
+async function runCheckRoutine(page) {
+    console.log(`\n🔄 Starting check routine: ${CHECK_DURATION_SECONDS}s every ${CHECK_INTERVAL_MINUTES}m...`);
+    const startTime = Date.now();
+    let interval;
+
+    // Function to run the check repeatedly during the 10-second window
+    const checkLoop = async () => {
+        const elapsedTime = Date.now() - startTime;
+
+        if (elapsedTime >= CHECK_DURATION_SECONDS * 1000) {
+            clearInterval(interval);
+            console.log(`\n⏳ Check routine complete. Resuming in ${CHECK_INTERVAL_MINUTES} minute(s).`);
+
+            // Schedule the next check routine
+            setTimeout(() => runCheckRoutine(page), CHECK_INTERVAL_MINUTES * 60 * 1000);
+            return;
+        }
+
+        console.log(`  [${new Date().toLocaleTimeString()}] Checking...`);
+        const status = await checkAndClickRunButton(page);
+
+        // OPTIONAL: If we click it, we can stop the check loop immediately since the button state will change.
+        if (status === 'CLICKED') {
+            clearInterval(interval);
+            console.log('✨ Successful click detected. Restarting check routine after a short delay.');
+            // Give Replit a few seconds to start the script before restarting the full interval
+            setTimeout(() => runCheckRoutine(page), 5000); 
+        }
+    };
+
+    // Start the immediate loop and store the interval ID
+    interval = setInterval(checkLoop, CHECK_FREQUENCY_MS);
+}
+// -----------------------------
+
+
 async function startBrowser() {
     console.log("Starting browser...");
     try {
+        // ... (findChrome, userDataDir, cookiesPath, browser launch is unchanged)
         const chromePath = findChrome();
         const userDataDir = path.join(__dirname, 'chrome_user_data');
         const cookiesPath = path.join(__dirname, 'replit_cookies.json');
@@ -111,7 +150,6 @@ async function startBrowser() {
         console.log("✓ Browser launched!");
 
         const page = await browser.newPage();
-
         await page.setViewport({ width: 1920, height: 1080 });
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
@@ -122,71 +160,29 @@ async function startBrowser() {
             console.log(`✓ Loaded ${cookies.length} cookies`);
         }
 
-        const WORKSPACE_URL = 'https://replit.com/@HUDV1/mb#main.py';
-
         console.log("Navigating to Replit workspace...");
         await page.goto(WORKSPACE_URL, { 
-            waitUntil: 'domcontentloaded',
+            waitUntil: 'domcontentloaded', 
             timeout: 90000 
         });
         console.log("✓ Workspace loaded!");
 
-        await page.waitForTimeout(5000);
+        // Initial delay for Replit to fully render the workspace
+        await page.waitForTimeout(5000); 
 
+        // Save cookies after initial load (for login sessions)
         const cookies = await page.cookies();
         fs.writeFileSync(cookiesPath, JSON.stringify(cookies, null, 2));
 
-        console.log("✓ Checking button every 5 minutes");
-        console.log("✓ Page refresh every 6 minutes\n");
+        // Start the scheduled checking routine
+        await runCheckRoutine(page); 
 
-        // Initial check
-        await checkAndClickRunButton(page);
-
-        // Check button every 5 MINUTES
-        setInterval(async () => {
-            console.log(`\n⏰ [${new Date().toLocaleTimeString()}] Checking button...`);
-
-            const currentUrl = page.url();
-            if (!currentUrl.includes('replit.com/@HUDV1/mb')) {
-                console.log('⚠️  Navigating back to workspace...');
-                await page.goto(WORKSPACE_URL, { waitUntil: 'domcontentloaded', timeout: 90000 });
-                await page.waitForTimeout(3000);
-            }
-
-            await checkAndClickRunButton(page);
-        }, 5 * 60 * 1000); // 5 MINUTES
-
-        // Refresh page every 6 minutes
-        setInterval(async () => {
-            try {
-                console.log(`\n🔄 [${new Date().toLocaleTimeString()}] Refreshing page...`);
-
-                await page.goto(WORKSPACE_URL, { 
-                    waitUntil: 'domcontentloaded', 
-                    timeout: 90000 
-                });
-                console.log('✓ Refreshed');
-
-                await page.waitForTimeout(5000);
-
-                const cookies = await page.cookies();
-                fs.writeFileSync(cookiesPath, JSON.stringify(cookies, null, 2));
-
-                await checkAndClickRunButton(page);
-            } catch (e) {
-                console.log('✗ Refresh failed:', e.message);
-                try {
-                    await page.goto(WORKSPACE_URL, { waitUntil: 'domcontentloaded', timeout: 90000 });
-                } catch (err) {
-                    console.log('✗ Recovery failed:', err.message);
-                }
-            }
-        }, 6 * 60 * 1000); // 6 MINUTES
-
-        await new Promise(() => {});
+        // Keep the browser running indefinitely
+        await new Promise(() => {}); 
 
     } catch (err) {
-        console.error("Error:", err.message);
+        console.error("Error in startBrowser:", err.message);
+        // Attempt to restart browser after a delay if a fatal error occurs
         setTimeout(() => startBrowser(), 30000);
     }
 }

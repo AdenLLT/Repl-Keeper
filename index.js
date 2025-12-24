@@ -95,13 +95,13 @@ async function startBrowser() {
         console.log("FIRST M PRESS:");
 
         // Method 1: keyboard.press with text option (CRITICAL!)
-        await page.keyboard.press('m', {text: 'm'});
+        page.keyboard.press('Enter');
         console.log("  ✓ Method 1: press with text option");
         await page.waitForTimeout(300);
 
         // Method 2: keyboard.down + keyboard.up with text
-        await page.keyboard.down('m', {text: 'm'});
-        await page.keyboard.up('m');
+        await page.keyboard.press('\n');
+        await page.keyboard.press('\n');
         console.log("  ✓ Method 2: down/up with text");
         await page.waitForTimeout(300);
 
@@ -118,12 +118,11 @@ async function startBrowser() {
         // SECOND M PRESS
         console.log("SECOND M PRESS:");
 
-        await page.keyboard.press('m', {text: 'm'});
+        await page.keyboard.press('\n');
         console.log("  ✓ Method 1: press with text option");
         await page.waitForTimeout(300);
 
-        await page.keyboard.down('m', {text: 'm'});
-        await page.keyboard.up('m');
+        await page.keyboard.press('\n');
         console.log("  ✓ Method 2: down/up with text");
         await page.waitForTimeout(300);
 

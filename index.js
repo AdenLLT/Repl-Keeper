@@ -33,6 +33,7 @@ async function debugAndClickRunButton(page) {
         const result = await page.evaluate(() => {
             const log = [];
             const RUN_ICON_PATH = 'M20.593 10.91a1.25 1.25 0 0 1 0 2.18l-14.48 8.145a1.25 1.25 0 0 1-1.863-1.09V3.855a1.25 1.25 0 0 1 1.863-1.09l14.48 8.146Z';
+            const STOP_ICON_PATH = 'M12 3.75A8.25 8.25 0 1 0 20.25 12a.75.75 0 0 1 1.5';
 
             // METHOD 1: Try data-cy selector
             log.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -45,11 +46,13 @@ async function debugAndClickRunButton(page) {
                 log.push(`SVG path found: ${!!svgPath}`);
                 if (svgPath) {
                     const pathD = svgPath.getAttribute('d');
-                    log.push(`Path d attribute: ${pathD?.substring(0, 50)}...`);
+                    log.push(`Path d attribute (FULL): ${pathD}`);
                     log.push(`Matches RUN icon: ${pathD === RUN_ICON_PATH}`);
+                    log.push(`Matches STOP icon prefix: ${pathD?.startsWith(STOP_ICON_PATH)}`);
                 }
                 log.push(`Button aria-label: ${btnByCy.getAttribute('aria-label')}`);
-                log.push(`Button classes: ${btnByCy.className.substring(0, 100)}...`);
+                log.push(`Button disabled: ${btnByCy.disabled}`);
+                log.push(`Button outerHTML: ${btnByCy.outerHTML.substring(0, 300)}...`);
             }
 
             // METHOD 2: Try XPath
@@ -122,11 +125,18 @@ async function debugAndClickRunButton(page) {
             const svgPath = button.querySelector('svg path');
             if (svgPath) {
                 const pathD = svgPath.getAttribute('d');
-                if (pathD !== RUN_ICON_PATH) {
-                    log.push('⏸️  Button found but showing STOP icon (app is running)');
-                    log.push(`Current path: ${pathD?.substring(0, 50)}...`);
-                    return { success: false, reason: 'NOT_RUN_STATE', log: log.join('\n') };
+
+                // Check if it's actually the RUN icon
+                if (pathD === RUN_ICON_PATH) {
+                    log.push('✅ CONFIRMED: Button is showing RUN (Play) icon!');
+                } else {
+                    log.push('⏸️  Button found but NOT showing RUN icon');
+                    log.push(`Current path: ${pathD}`);
+                    log.push('ATTEMPTING TO CLICK ANYWAY (TESTING MODE)');
+                    // Don't return early - let's try clicking anyway to test
                 }
+            } else {
+                log.push('⚠️  No SVG path found, clicking anyway');
             }
 
             // Try multiple click methods
@@ -195,28 +205,26 @@ async function puppeteerClick(page) {
     try {
         console.log('🔧 Attempting Puppeteer native click...');
 
-        // Try multiple selectors
+        // Try multiple selectors WITHOUT waitForSelector (DOM changes too fast)
         const selectors = [
             'button[data-cy="ws-run-btn"]',
-            'button[aria-label="Run or stop the app"]',
-            'button.IconButton-module__B3jpBG__root'
+            'button[aria-label="Run or stop the app"]'
         ];
 
         for (const selector of selectors) {
             try {
-                await page.waitForSelector(selector, { timeout: 2000 });
-                await page.click(selector);
+                // Just try to click directly without waiting
+                await page.click(selector, { timeout: 1000 });
                 console.log(`✅ Puppeteer click SUCCESS with selector: ${selector}\n`);
                 return true;
             } catch (e) {
-                console.log(`❌ Selector "${selector}" failed: ${e.message}`);
+                // Silent fail, try next selector
             }
         }
 
-        console.log('❌ All Puppeteer click methods failed\n');
+        console.log('⚠️  Puppeteer click not attempted (button may not be in RUN state)\n');
         return false;
     } catch (error) {
-        console.log(`❌ Puppeteer click error: ${error.message}\n`);
         return false;
     }
 }
@@ -313,6 +321,12 @@ async function startBrowser() {
         console.log("\n" + "🚀".repeat(30));
         console.log("STARTING MONITOR LOOP WITH FULL DEBUGGING");
         console.log("🚀".repeat(30) + "\n");
+
+        // Take a screenshot to see what we actually loaded
+        const screenshotPath = path.join(__dirname, 'debug_screenshot.png');
+        await page.screenshot({ path: screenshotPath, fullPage: false });
+        console.log(`📸 Screenshot saved to: ${screenshotPath}`);
+        console.log("Check this screenshot to see what the browser actually sees!\n");
 
         // Run initial debug
         console.log("Running initial check...");

@@ -26,53 +26,9 @@ function findChrome() {
     throw new Error('Chrome executable not found');
 }
 
-const tampermonkeyScript = `
-(function() {
-    'use strict';
-    const CHECK_INTERVAL_MS = 5000; 
-    const BUTTON_SELECTOR = 'button[data-cy="ws-run-btn"]';
-    const RUN_ICON_PATH_DATA = 'M20.593 10.91a1.25 1.25 0 0 1 0 2.18l-14.48 8.145a1.25 1.25 0 0 1-1.863-1.09V3.855a1.25 1.25 0 0 1 1.863-1.09l14.48 8.146Z';
-
-    const simulateMouseClick = (element) => {
-        const dispatchEvent = (type) => {
-            const event = new MouseEvent(type, {
-                bubbles: true,
-                cancelable: true,
-                view: window
-            });
-            element.dispatchEvent(event);
-        };
-        dispatchEvent('mousedown');
-        dispatchEvent('mouseup');
-        dispatchEvent('click');
-    };
-
-    function monitorAndClickRunButton() {
-        const button = document.querySelector(BUTTON_SELECTOR);
-
-        if (button) {
-            const iconPath = button.querySelector('svg path');
-
-            if (iconPath && iconPath.getAttribute('d') === RUN_ICON_PATH_DATA) {
-                simulateMouseClick(button);
-                console.log('Replit Auto-Run (v1.7): Found RUN icon (Play). Restarting service.');
-            } else {
-                console.log('Replit Auto-Run (v1.7): Button found, but icon is NOT the RUN (Play) triangle. App is running or stopping.');
-            }
-        } else {
-            console.log('Replit Auto-Run (v1.7): Button component not found. Retrying in 5 seconds.');
-        }
-    }
-
-    console.log('Replit Auto-Run (v1.7): Starting state-aware monitor. Checking every 5 seconds.');
-    setInterval(monitorAndClickRunButton, CHECK_INTERVAL_MS);
-})();
-`;
-
-async function checkButton(page) {
+async function checkAndClickRunButton(page) {
     try {
-        console.log('🔍 Manually checking for Run button...');
-        const buttonExists = await page.evaluate(() => {
+        const result = await page.evaluate(() => {
             const BUTTON_SELECTOR = 'button[data-cy="ws-run-btn"]';
             const RUN_ICON_PATH_DATA = 'M20.593 10.91a1.25 1.25 0 0 1 0 2.18l-14.48 8.145a1.25 1.25 0 0 1-1.863-1.09V3.855a1.25 1.25 0 0 1 1.863-1.09l14.48 8.146Z';
 
@@ -81,35 +37,51 @@ async function checkButton(page) {
             if (button) {
                 const iconPath = button.querySelector('svg path');
 
-                if (iconPath && iconPath.getAttribute('d') === RUN_ICON_PATH_DATA) {
-                    const dispatchEvent = (type) => {
-                        const event = new MouseEvent(type, {
-                            bubbles: true,
-                            cancelable: true,
-                            view: window
-                        });
-                        button.dispatchEvent(event);
-                    };
-                    dispatchEvent('mousedown');
-                    dispatchEvent('mouseup');
-                    dispatchEvent('click');
-                    return 'CLICKED';
+                if (iconPath) {
+                    const pathData = iconPath.getAttribute('d');
+
+                    // Check if it's the RUN icon (Play triangle)
+                    if (pathData === RUN_ICON_PATH_DATA) {
+                        // Click it!
+                        const dispatchEvent = (type) => {
+                            const event = new MouseEvent(type, {
+                                bubbles: true,
+                                cancelable: true,
+                                view: window
+                            });
+                            button.dispatchEvent(event);
+                        };
+                        dispatchEvent('mousedown');
+                        dispatchEvent('mouseup');
+                        dispatchEvent('click');
+
+                        return { status: 'CLICKED', path: pathData };
+                    } else {
+                        return { status: 'NOT_RUN_ICON', path: pathData };
+                    }
                 } else {
-                    return 'RUNNING';
+                    return { status: 'NO_SVG_PATH' };
                 }
+            } else {
+                return { status: 'BUTTON_NOT_FOUND' };
             }
-            return 'NOT_FOUND';
         });
 
-        if (buttonExists === 'CLICKED') {
-            console.log('✅ Manually clicked Run button!');
-        } else if (buttonExists === 'RUNNING') {
-            console.log('⏸️  App is already running');
+        if (result.status === 'CLICKED') {
+            console.log('✅ CLICKED RUN BUTTON! App is starting...');
+        } else if (result.status === 'NOT_RUN_ICON') {
+            console.log('⏸️  Button exists but icon is NOT the play triangle (app running or stopping)');
+            console.log(`   Icon path: ${result.path.substring(0, 50)}...`);
+        } else if (result.status === 'NO_SVG_PATH') {
+            console.log('❌ Button found but no SVG path inside');
         } else {
-            console.log('❌ Button not found');
+            console.log('❌ Run button not found on page');
         }
+
+        return result.status;
     } catch (error) {
-        console.log('Error checking button:', error.message);
+        console.log('❌ Error checking button:', error.message);
+        return 'ERROR';
     }
 }
 
@@ -141,9 +113,6 @@ async function startBrowser() {
 
         const page = await browser.newPage();
 
-        // Inject Tampermonkey script on EVERY new document
-        await page.evaluateOnNewDocument(tampermonkeyScript);
-
         await page.setViewport({ width: 1920, height: 1080 });
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
@@ -161,39 +130,39 @@ async function startBrowser() {
             waitUntil: 'domcontentloaded',
             timeout: 90000 
         });
-        console.log("✓ Workspace loaded with Tampermonkey script!");
+        console.log("✓ Workspace loaded!");
 
         await page.waitForTimeout(5000);
 
         const cookies = await page.cookies();
         fs.writeFileSync(cookiesPath, JSON.stringify(cookies, null, 2));
 
-        console.log("✓ Tampermonkey script is running!");
-        console.log("✓ Manual button check every 5 minutes");
+        console.log("✓ Auto-Run script active!");
+        console.log("✓ Checking button every 5 seconds");
         console.log("✓ Page refresh every 6 minutes");
         console.log("✓ Will NEVER leave workspace page\n");
 
-        // Check button every 5 minutes
-        setInterval(async () => {
-            console.log(`\n⏰ [${new Date().toLocaleTimeString()}] 5-minute button check`);
+        // Initial check
+        await checkAndClickRunButton(page);
 
+        // Check button every 5 SECONDS
+        setInterval(async () => {
             // Make sure we're still on the workspace page
             const currentUrl = page.url();
             if (!currentUrl.includes('replit.com/@HUDV1/mb')) {
                 console.log('⚠️  OFF WORKSPACE PAGE! Navigating back...');
                 await page.goto(WORKSPACE_URL, { waitUntil: 'domcontentloaded', timeout: 90000 });
-                await page.waitForTimeout(5000);
+                await page.waitForTimeout(3000);
             }
 
-            await checkButton(page);
-        }, 5 * 60 * 1000); // 5 minutes
+            await checkAndClickRunButton(page);
+        }, 5000); // 5 SECONDS
 
         // Refresh page every 6 minutes
         setInterval(async () => {
             try {
                 console.log(`\n🔄 [${new Date().toLocaleTimeString()}] 6-minute page refresh`);
 
-                // Always go to the workspace URL, never navigate away
                 await page.goto(WORKSPACE_URL, { 
                     waitUntil: 'domcontentloaded', 
                     timeout: 90000 
@@ -207,10 +176,9 @@ async function startBrowser() {
                 fs.writeFileSync(cookiesPath, JSON.stringify(cookies, null, 2));
 
                 // Check button after refresh
-                await checkButton(page);
+                await checkAndClickRunButton(page);
             } catch (e) {
                 console.log('✗ Refresh failed:', e.message);
-                // Try to get back to workspace
                 try {
                     await page.goto(WORKSPACE_URL, { waitUntil: 'domcontentloaded', timeout: 90000 });
                 } catch (err) {

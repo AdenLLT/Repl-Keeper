@@ -172,42 +172,12 @@ async function startBrowser() {
 
                 console.log("Pressing 'M' key twice using multiple methods...");
 
-                // Method 1: keyboard.press with KeyM
-                await page.keyboard.press('KeyM');
-                console.log("  ✓ Method 1: KeyM");
-                await page.waitForTimeout(500);
-
-                // Method 2: keyboard.down + keyboard.up
-                await page.keyboard.down('KeyM');
-                await page.keyboard.up('KeyM');
-                console.log("  ✓ Method 2: down/up KeyM");
-                await page.waitForTimeout(500);
-
-                // Method 3: keyboard.type
-                await page.keyboard.type('m');
-                console.log("  ✓ Method 3: type 'm'");
-                await page.waitForTimeout(500);
-
                 // Method 4: Using character code (77 is 'M')
                 await page.keyboard.press(String.fromCharCode(77));
                 console.log("  ✓ Method 4: char code 77");
                 await page.waitForTimeout(500);
 
                 console.log("SECOND M PRESS:");
-
-                // SECOND M PRESS - repeat all methods
-                await page.keyboard.press('KeyM');
-                console.log("  ✓ Method 1: KeyM");
-                await page.waitForTimeout(500);
-
-                await page.keyboard.down('KeyM');
-                await page.keyboard.up('KeyM');
-                console.log("  ✓ Method 2: down/up KeyM");
-                await page.waitForTimeout(500);
-
-                await page.keyboard.type('m');
-                console.log("  ✓ Method 3: type 'm'");
-                await page.waitForTimeout(500);
 
                 await page.keyboard.press(String.fromCharCode(77));
                 console.log("  ✓ Method 4: char code 77");

@@ -5,10 +5,11 @@ const path = require('path');
 const app = express();
 
 // --- Configuration ---
-const WORKSPACE_URL = 'https://replit.com/@HUDV1/mb#main.py';
+const WORKSPACE_URL = 'https://replit.com/@HUDV1/mb#main.py'; // <<< VERIFY THIS URL IS CORRECT
 const CHECK_INTERVAL_MINUTES = 1; 
 const CHECK_DURATION_SECONDS = 10;
 const CHECK_FREQUENCY_MS = 2000; // Check every 2 seconds during the 10-second window
+const RUN_BUTTON_SELECTOR = 'button[data-cy="ws-run-btn"]';
 // ---------------------
 
 app.get('/', (req, res) => res.send('Keeper is Active'));
@@ -33,22 +34,21 @@ function findChrome() {
     throw new Error('Chrome executable not found');
 }
 
+/**
+ * Checks for the presence of the enabled Run button and clicks it forcefully.
+ * This function uses the latest logic confirmed to handle Replit's UI.
+ */
 async function checkAndClickRunButton(page) {
     try {
-        const result = await page.evaluate(() => {
-            const BUTTON_SELECTOR = 'button[data-cy="ws-run-btn"]';
-            const button = document.querySelector(BUTTON_SELECTOR);
+        const result = await page.evaluate((selector) => {
+            const button = document.querySelector(selector);
 
             if (button) {
-                // If the button exists, we assume it's the RUN button in a stopped state, 
-                // as the Stop button is usually visually distinct or has different data attributes 
-                // when the app is actively running.
-
-                // Check for explicit 'disabled' state, though Replit often doesn't use it cleanly.
+                // Check if the button is NOT disabled (ready to run).
                 const isReadyToRun = !button.disabled; 
 
                 if (isReadyToRun) { 
-                    // Use the reliable click simulation
+                    // Forceful click simulation (mousedown -> mouseup -> click)
                     const dispatchEvent = (type) => {
                         const event = new MouseEvent(type, {
                             bubbles: true,
@@ -58,7 +58,6 @@ async function checkAndClickRunButton(page) {
                         button.dispatchEvent(event);
                     };
 
-                    // Force the click sequence
                     dispatchEvent('mousedown');
                     dispatchEvent('mouseup');
                     dispatchEvent('click');
@@ -69,10 +68,10 @@ async function checkAndClickRunButton(page) {
                     return { status: 'DISABLED' }; 
                 }
             } else {
-                // Button not found at all (e.g., page still loading, or element removed entirely)
+                // Button not found at all
                 return { status: 'NOT_FOUND' };
             }
-        });
+        }, RUN_BUTTON_SELECTOR); // Pass the selector into the browser context
 
         if (result.status === 'CLICKED') {
             console.log('✅ FORCED CLICK! RUN BUTTON INTERACTED.');
@@ -89,7 +88,10 @@ async function checkAndClickRunButton(page) {
     }
 }
 
-// --- NEW SCHEDULING LOGIC ---
+
+/**
+ * Sets up the timed routine to check the button status.
+ */
 async function runCheckRoutine(page) {
     console.log(`\n🔄 Starting check routine: ${CHECK_DURATION_SECONDS}s every ${CHECK_INTERVAL_MINUTES}m...`);
     const startTime = Date.now();
@@ -111,10 +113,10 @@ async function runCheckRoutine(page) {
         console.log(`  [${new Date().toLocaleTimeString()}] Checking...`);
         const status = await checkAndClickRunButton(page);
 
-        // OPTIONAL: If we click it, we can stop the check loop immediately since the button state will change.
+        // If we click it, stop the current loop immediately since the state has changed.
         if (status === 'CLICKED') {
             clearInterval(interval);
-            console.log('✨ Successful click detected. Restarting check routine after a short delay.');
+            console.log('✨ Successful click detected. Restarting check routine after short delay.');
             // Give Replit a few seconds to start the script before restarting the full interval
             setTimeout(() => runCheckRoutine(page), 5000); 
         }
@@ -123,13 +125,14 @@ async function runCheckRoutine(page) {
     // Start the immediate loop and store the interval ID
     interval = setInterval(checkLoop, CHECK_FREQUENCY_MS);
 }
-// -----------------------------
 
 
+/**
+ * Launches the browser, navigates, and waits for the crucial button state.
+ */
 async function startBrowser() {
     console.log("Starting browser...");
     try {
-        // ... (findChrome, userDataDir, cookiesPath, browser launch is unchanged)
         const chromePath = findChrome();
         const userDataDir = path.join(__dirname, 'chrome_user_data');
         const cookiesPath = path.join(__dirname, 'replit_cookies.json');
@@ -152,7 +155,6 @@ async function startBrowser() {
         });
 
         console.log("✓ Browser launched!");
-
         const page = await browser.newPage();
         await page.setViewport({ width: 1920, height: 1080 });
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
@@ -171,22 +173,39 @@ async function startBrowser() {
         });
         console.log("✓ Workspace loaded!");
 
-        // Initial delay for Replit to fully render the workspace
-        await page.waitForTimeout(5000); 
+        // --- CRITICAL WAITING STEP: Wait for the button to become enabled ---
+        console.log("Waiting for the Run button to become enabled...");
 
-        // Save cookies after initial load (for login sessions)
+        try {
+            // 1. Wait for the button to appear in the DOM
+            await page.waitForSelector(RUN_BUTTON_SELECTOR, { timeout: 30000 }); 
+
+            // 2. Wait for the button to become enabled (i.e., the disabled attribute is removed)
+            await page.waitForFunction(selector => {
+                const button = document.querySelector(selector);
+                // Wait until the button exists AND is not disabled
+                return button && !button.disabled;
+            }, { timeout: 60000 }, RUN_BUTTON_SELECTOR); // 60s max wait for environment prep
+
+            console.log("✅ Run button is ENABLED and ready to click!");
+
+        } catch (e) {
+            console.warn(`⚠️ Warning: Run button did not become enabled within the timeout (Error: ${e.message}). Proceeding anyway.`);
+        }
+        // --- END CRITICAL WAITING STEP ---
+
+        // Save cookies after initial load
         const cookies = await page.cookies();
         fs.writeFileSync(cookiesPath, JSON.stringify(cookies, null, 2));
 
-        // Start the scheduled checking routine
+        // Start the scheduled checking routine (it will run the check and click immediately if needed)
         await runCheckRoutine(page); 
 
         // Keep the browser running indefinitely
         await new Promise(() => {}); 
 
     } catch (err) {
-        console.error("Error in startBrowser:", err.message);
-        // Attempt to restart browser after a delay if a fatal error occurs
+        console.error("❌ Fatal Error in startBrowser:", err.message);
         setTimeout(() => startBrowser(), 30000);
     }
 }

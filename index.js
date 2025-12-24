@@ -56,7 +56,9 @@ async function startBrowser() {
         });
 
         const page = await browser.newPage();
-        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+        await page.setUserAgent(
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        );
 
         if (fs.existsSync(cookiesPath)) {
             const cookies = JSON.parse(fs.readFileSync(cookiesPath, 'utf8'));
@@ -73,14 +75,22 @@ async function startBrowser() {
             console.log(`\n🔄 [${new Date().toLocaleTimeString()}] Starting button clicking cycle...`);
 
             try {
-                await page.goto(WORKSPACE_URL, { waitUntil: 'domcontentloaded', timeout: 180000 });
+                await page.goto(WORKSPACE_URL, {
+                    waitUntil: 'domcontentloaded',
+                    timeout: 180000
+                });
 
                 console.log('⏳ Waiting for Replit interface to fully load (30 seconds)...');
                 await sleep(30000);
 
+                // ✅ WAIT FOR RUN BUTTON
+                await page.waitForSelector(runButtonSelector, { timeout: 60000 });
+
+                // ✅ FORCE FOCUS
                 await page.bringToFront();
                 await page.focus('body');
 
+                // ✅ REAL MOUSE CLICK
                 try {
                     const runBtn = await page.$(runButtonSelector);
                     const box = await runBtn.boundingBox();
@@ -95,6 +105,7 @@ async function startBrowser() {
                     await page.waitForTimeout(50);
                     await page.mouse.up();
 
+                    // ✅ KEYBOARD SHORTCUT
                     await page.keyboard.down('Control');
                     await page.keyboard.press('Enter');
                     await page.keyboard.up('Control');
@@ -103,7 +114,7 @@ async function startBrowser() {
                 const buttons = await page.evaluate(() => {
                     const btns = Array.from(document.querySelectorAll('button[type="button"]'));
                     return btns.map((btn, index) => ({
-                        index: index,
+                        index,
                         text: btn.innerText.trim().substring(0, 50) || 'No text',
                         ariaLabel: btn.getAttribute('aria-label') || 'No aria-label',
                         dataCy: btn.getAttribute('data-cy') || 'No data-cy',
@@ -137,11 +148,8 @@ async function startBrowser() {
                     try {
                         await page.evaluate((index) => {
                             const buttons = document.querySelectorAll('button[type="button"]');
-                            if (buttons[index]) {
-                                buttons[index].click();
-                            }
+                            if (buttons[index]) buttons[index].click();
                         }, i);
-
                         console.log(`   ✅ Clicked successfully!`);
                     } catch (err) {
                         console.log(`   ⚠️  Click failed: ${err.message}`);

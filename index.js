@@ -40,7 +40,7 @@ async function checkAndClickRunButton(page) {
                 if (iconPath) {
                     const pathData = iconPath.getAttribute('d');
 
-                    // Check if it's the RUN icon (Play triangle)
+                    // Only check if it's the RUN icon
                     if (pathData === RUN_ICON_PATH_DATA) {
                         // Click it!
                         const dispatchEvent = (type) => {
@@ -55,32 +55,31 @@ async function checkAndClickRunButton(page) {
                         dispatchEvent('mouseup');
                         dispatchEvent('click');
 
-                        return { status: 'CLICKED', path: pathData };
+                        return { status: 'CLICKED' };
                     } else {
-                        return { status: 'NOT_RUN_ICON', path: pathData };
+                        return { status: 'RUNNING' };
                     }
                 } else {
-                    return { status: 'NO_SVG_PATH' };
+                    return { status: 'NO_PATH' };
                 }
             } else {
-                return { status: 'BUTTON_NOT_FOUND' };
+                return { status: 'NO_BUTTON' };
             }
         });
 
         if (result.status === 'CLICKED') {
-            console.log('✅ CLICKED RUN BUTTON! App is starting...');
-        } else if (result.status === 'NOT_RUN_ICON') {
-            console.log('⏸️  Button exists but icon is NOT the play triangle (app running or stopping)');
-            console.log(`   Icon path: ${result.path.substring(0, 50)}...`);
-        } else if (result.status === 'NO_SVG_PATH') {
-            console.log('❌ Button found but no SVG path inside');
+            console.log('✅ CLICKED RUN BUTTON!');
+        } else if (result.status === 'RUNNING') {
+            console.log('✓ App is running');
+        } else if (result.status === 'NO_PATH') {
+            console.log('⚠️  Button found but no path');
         } else {
-            console.log('❌ Run button not found on page');
+            console.log('⚠️  Button not found');
         }
 
         return result.status;
     } catch (error) {
-        console.log('❌ Error checking button:', error.message);
+        console.log('❌ Error:', error.message);
         return 'ERROR';
     }
 }
@@ -137,62 +136,57 @@ async function startBrowser() {
         const cookies = await page.cookies();
         fs.writeFileSync(cookiesPath, JSON.stringify(cookies, null, 2));
 
-        console.log("✓ Auto-Run script active!");
-        console.log("✓ Checking button every 5 seconds");
-        console.log("✓ Page refresh every 6 minutes");
-        console.log("✓ Will NEVER leave workspace page\n");
+        console.log("✓ Checking button every 5 minutes");
+        console.log("✓ Page refresh every 6 minutes\n");
 
         // Initial check
         await checkAndClickRunButton(page);
 
-        // Check button every 5 SECONDS
+        // Check button every 5 MINUTES
         setInterval(async () => {
-            // Make sure we're still on the workspace page
+            console.log(`\n⏰ [${new Date().toLocaleTimeString()}] Checking button...`);
+
             const currentUrl = page.url();
             if (!currentUrl.includes('replit.com/@HUDV1/mb')) {
-                console.log('⚠️  OFF WORKSPACE PAGE! Navigating back...');
+                console.log('⚠️  Navigating back to workspace...');
                 await page.goto(WORKSPACE_URL, { waitUntil: 'domcontentloaded', timeout: 90000 });
                 await page.waitForTimeout(3000);
             }
 
             await checkAndClickRunButton(page);
-        }, 5000); // 5 SECONDS
+        }, 5 * 60 * 1000); // 5 MINUTES
 
         // Refresh page every 6 minutes
         setInterval(async () => {
             try {
-                console.log(`\n🔄 [${new Date().toLocaleTimeString()}] 6-minute page refresh`);
+                console.log(`\n🔄 [${new Date().toLocaleTimeString()}] Refreshing page...`);
 
                 await page.goto(WORKSPACE_URL, { 
                     waitUntil: 'domcontentloaded', 
                     timeout: 90000 
                 });
-                console.log('✓ Workspace refreshed');
+                console.log('✓ Refreshed');
 
                 await page.waitForTimeout(5000);
 
-                // Update cookies
                 const cookies = await page.cookies();
                 fs.writeFileSync(cookiesPath, JSON.stringify(cookies, null, 2));
 
-                // Check button after refresh
                 await checkAndClickRunButton(page);
             } catch (e) {
                 console.log('✗ Refresh failed:', e.message);
                 try {
                     await page.goto(WORKSPACE_URL, { waitUntil: 'domcontentloaded', timeout: 90000 });
                 } catch (err) {
-                    console.log('✗ Could not return to workspace:', err.message);
+                    console.log('✗ Recovery failed:', err.message);
                 }
             }
-        }, 6 * 60 * 1000); // 6 minutes
+        }, 6 * 60 * 1000); // 6 MINUTES
 
-        // Keep alive forever
         await new Promise(() => {});
 
     } catch (err) {
         console.error("Error:", err.message);
-        console.log("Retrying in 30 seconds...");
         setTimeout(() => startBrowser(), 30000);
     }
 }

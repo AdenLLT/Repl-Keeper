@@ -29,6 +29,7 @@ function findChrome() {
 // COMPREHENSIVE DEBUG AND CLICK FUNCTION
 async function debugAndClickRunButton(page) {
     try {
+        console.log('🔍 Running debug and click function...');
         const result = await page.evaluate(() => {
             const log = [];
             const RUN_ICON_PATH = 'M20.593 10.91a1.25 1.25 0 0 1 0 2.18l-14.48 8.145a1.25 1.25 0 0 1-1.863-1.09V3.855a1.25 1.25 0 0 1 1.863-1.09l14.48 8.146Z';
@@ -184,6 +185,7 @@ async function debugAndClickRunButton(page) {
 
     } catch (error) {
         console.log(`\n❌ CRITICAL ERROR: ${error.message}\n`);
+        console.log(`Stack: ${error.stack}\n`);
         return { success: false, error: error.message };
     }
 }
@@ -191,7 +193,7 @@ async function debugAndClickRunButton(page) {
 // Alternative: Use Puppeteer's built-in click
 async function puppeteerClick(page) {
     try {
-        console.log('\n🔧 Attempting Puppeteer native click...');
+        console.log('🔧 Attempting Puppeteer native click...');
 
         // Try multiple selectors
         const selectors = [
@@ -230,6 +232,7 @@ async function startBrowser() {
             fs.mkdirSync(userDataDir, { recursive: true });
         }
 
+        console.log("Launching browser with aggressive settings...");
         const browser = await puppeteer.launch({
             headless: "new",
             executablePath: chromePath,
@@ -238,8 +241,20 @@ async function startBrowser() {
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
                 '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--disable-software-rasterizer',
+                '--disable-extensions',
+                '--disable-background-networking',
+                '--disable-sync',
+                '--disable-translate',
+                '--disable-features=site-per-process',
+                '--metrics-recording-only',
+                '--mute-audio',
+                '--no-first-run',
+                '--safebrowsing-disable-auto-update',
                 '--single-process',
-                '--no-zygote'
+                '--no-zygote',
+                '--js-flags=--max-old-space-size=256'
             ]
         });
 
@@ -247,8 +262,13 @@ async function startBrowser() {
 
         const page = await browser.newPage();
 
+        console.log("Setting up page...");
         await page.setViewport({ width: 1920, height: 1080 });
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+
+        // Set default timeout
+        page.setDefaultNavigationTimeout(120000); // 2 minutes
+        page.setDefaultTimeout(30000); // 30 seconds for other operations
 
         // Load cookies if they exist
         if (fs.existsSync(cookiesPath)) {
@@ -261,23 +281,41 @@ async function startBrowser() {
         const WORKSPACE_URL = 'https://replit.com/@HUDV1/mb#main.py';
 
         console.log("Navigating to Replit workspace...");
-        await page.goto(WORKSPACE_URL, { 
-            waitUntil: 'networkidle2',
-            timeout: 90000 
-        });
-        console.log("✓ Workspace loaded!");
+        console.log("⏳ This may take up to 2 minutes...");
 
-        // Wait for page to fully load
-        console.log("Waiting 12 seconds for dynamic content...");
-        await page.waitForTimeout(12000);
+        // Try navigation with different strategies
+        try {
+            await page.goto(WORKSPACE_URL, { 
+                waitUntil: 'domcontentloaded', // Less strict than networkidle2
+                timeout: 120000 
+            });
+            console.log("✓ Page loaded (domcontentloaded)!");
+        } catch (navError) {
+            console.log(`⚠️  Navigation warning: ${navError.message}`);
+            console.log("Trying to continue anyway...");
+        }
+
+        // Wait for page to stabilize
+        console.log("Waiting for page to stabilize (15 seconds)...");
+        await new Promise(resolve => setTimeout(resolve, 15000));
+
+        console.log("✓ Wait complete!");
 
         // Save cookies after first load
-        const cookies = await page.cookies();
-        fs.writeFileSync(cookiesPath, JSON.stringify(cookies, null, 2));
+        try {
+            const cookies = await page.cookies();
+            fs.writeFileSync(cookiesPath, JSON.stringify(cookies, null, 2));
+            console.log(`✓ Saved ${cookies.length} cookies`);
+        } catch (e) {
+            console.log(`⚠️  Cookie save warning: ${e.message}`);
+        }
 
-        console.log("\n✓ Starting monitor loop with FULL DEBUGGING...\n");
+        console.log("\n" + "🚀".repeat(30));
+        console.log("STARTING MONITOR LOOP WITH FULL DEBUGGING");
+        console.log("🚀".repeat(30) + "\n");
 
         // Run initial debug
+        console.log("Running initial check...");
         await debugAndClickRunButton(page);
 
         // Then try puppeteer click
@@ -285,23 +323,33 @@ async function startBrowser() {
 
         // Monitor every 5 seconds
         let checkCount = 0;
+        console.log("\n⏰ Setting up 5-second interval monitor...");
         const monitorInterval = setInterval(async () => {
             checkCount++;
-            console.log(`\n🔍 Check #${checkCount} at ${new Date().toLocaleTimeString()}`);
+            console.log(`\n${'═'.repeat(60)}`);
+            console.log(`🔍 Check #${checkCount} at ${new Date().toLocaleTimeString()}`);
+            console.log('═'.repeat(60));
 
-            // Every 5th check, do full debug. Otherwise just try click
-            if (checkCount % 5 === 0) {
-                await debugAndClickRunButton(page);
-            } else {
-                const clicked = await puppeteerClick(page);
-                if (!clicked) {
-                    // If puppeteer fails, try evaluate click
+            try {
+                // Every 5th check, do full debug. Otherwise just try click
+                if (checkCount % 5 === 0) {
                     await debugAndClickRunButton(page);
+                } else {
+                    const clicked = await puppeteerClick(page);
+                    if (!clicked) {
+                        // If puppeteer fails, try evaluate click
+                        await debugAndClickRunButton(page);
+                    }
                 }
+            } catch (err) {
+                console.log(`❌ Monitor error: ${err.message}`);
             }
         }, 5000);
 
+        console.log("✓ Monitor interval started!");
+
         // Refresh every 6 minutes
+        console.log("⏰ Setting up 6-minute refresh interval...");
         const refreshInterval = setInterval(async () => {
             try {
                 console.log(`\n${'🔄'.repeat(30)}`);
@@ -309,12 +357,14 @@ async function startBrowser() {
                 console.log('🔄'.repeat(30));
 
                 await page.goto(WORKSPACE_URL, { 
-                    waitUntil: 'networkidle2', 
-                    timeout: 90000 
+                    waitUntil: 'domcontentloaded', 
+                    timeout: 120000 
+                }).catch(e => {
+                    console.log(`⚠️  Refresh navigation warning: ${e.message}`);
                 });
 
-                console.log('✓ Page reloaded, waiting 12 seconds...');
-                await page.waitForTimeout(12000);
+                console.log('✓ Page reloaded, waiting 15 seconds...');
+                await new Promise(resolve => setTimeout(resolve, 15000));
 
                 const cookies = await page.cookies();
                 fs.writeFileSync(cookiesPath, JSON.stringify(cookies, null, 2));
@@ -328,14 +378,19 @@ async function startBrowser() {
             }
         }, 6 * 60 * 1000);
 
+        console.log("✓ Refresh interval started!");
+        console.log("\n✅ ALL SYSTEMS OPERATIONAL!\n");
+
         // Keep process alive
         await new Promise(() => {});
 
     } catch (err) {
-        console.error("Error:", err.message);
-        console.log("Restarting in 30 seconds...");
+        console.error("\n❌ FATAL ERROR:", err.message);
+        console.error("Stack trace:", err.stack);
+        console.log("\n🔄 Restarting in 30 seconds...\n");
         setTimeout(() => startBrowser(), 30000);
     }
 }
 
+console.log("🎬 SCRIPT STARTING...\n");
 startBrowser();

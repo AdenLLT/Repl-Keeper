@@ -69,7 +69,7 @@ async function startBrowser() {
         const WORKSPACE_URL = 'https://replit.com/@HUDV1/mb#main.py';
 
         const runLogic = async () => {
-            console.log(`\n🔄 [${new Date().toLocaleTimeString()}] Refreshing/Checking Workspace...`);
+            console.log(`\n🔄 [${new Date().toLocaleTimeString()}] Starting button clicking cycle...`);
 
             try {
                 await page.goto(WORKSPACE_URL, { waitUntil: 'domcontentloaded', timeout: 180000 });
@@ -77,57 +77,56 @@ async function startBrowser() {
                 console.log('⏳ Waiting for Replit interface to fully load (30 seconds)...');
                 await sleep(30000);
 
-                // Debug: Check what's actually on the page
-                const pageInfo = await page.evaluate(() => {
-                    return {
-                        title: document.title,
-                        url: window.location.href,
-                        hasRunButton: !!document.querySelector('button[data-cy="ws-run-btn"]'),
-                        allDataCyButtons: Array.from(document.querySelectorAll('button[data-cy]')).map(b => ({
-                            dataCy: b.getAttribute('data-cy'),
-                            ariaLabel: b.getAttribute('aria-label'),
-                            visible: b.offsetParent !== null
-                        })),
-                        allButtons: Array.from(document.querySelectorAll('button')).length
-                    };
+                // Get all buttons with type="button"
+                const buttons = await page.evaluate(() => {
+                    const btns = Array.from(document.querySelectorAll('button[type="button"]'));
+                    return btns.map((btn, index) => ({
+                        index: index,
+                        text: btn.innerText.trim().substring(0, 50) || 'No text',
+                        ariaLabel: btn.getAttribute('aria-label') || 'No aria-label',
+                        dataCy: btn.getAttribute('data-cy') || 'No data-cy',
+                        className: btn.className.substring(0, 100) || 'No class',
+                        visible: btn.offsetParent !== null
+                    }));
                 });
 
-                console.log('\n' + '='.repeat(80));
-                console.log('📊 PAGE DEBUG INFO');
+                console.log(`\n📊 Found ${buttons.length} buttons with type="button"`);
                 console.log('='.repeat(80));
-                console.log('Title:', pageInfo.title);
-                console.log('URL:', pageInfo.url);
-                console.log('Total buttons:', pageInfo.allButtons);
-                console.log('Run button found:', pageInfo.hasRunButton);
 
-                console.log('\n🔘 All buttons with data-cy attribute:');
-                if (pageInfo.allDataCyButtons.length === 0) {
-                    console.log('   ⚠️  NO BUTTONS WITH data-cy FOUND!');
-                } else {
-                    pageInfo.allDataCyButtons.forEach((btn, i) => {
-                        console.log(`   ${i + 1}. data-cy="${btn.dataCy}" aria-label="${btn.ariaLabel}" visible=${btn.visible}`);
-                    });
-                }
-                console.log('='.repeat(80) + '\n');
+                // Click each button with 1 minute delay
+                for (let i = 0; i < buttons.length; i++) {
+                    const btnInfo = buttons[i];
 
-                // Click at exact coordinates (150, 17) - 3 attempts
-                for (let i = 1; i <= 3; i++) {
-                    console.log(`\n🎯 Attempt ${i}/3 - Clicking at coordinates (150, 17)...`);
+                    console.log(`\n🎯 Button ${i + 1}/${buttons.length}:`);
+                    console.log(`   Text: "${btnInfo.text}"`);
+                    console.log(`   Aria-label: "${btnInfo.ariaLabel}"`);
+                    console.log(`   Data-cy: "${btnInfo.dataCy}"`);
+                    console.log(`   Visible: ${btnInfo.visible}`);
+                    console.log(`   Class: ${btnInfo.className}`);
 
                     try {
-                        await page.mouse.click(150, 17);
-                        console.log(`✅ Click ${i}/3 completed at X:940, Y:353`);
+                        // Click the button using nth-of-type selector
+                        await page.evaluate((index) => {
+                            const buttons = document.querySelectorAll('button[type="button"]');
+                            if (buttons[index]) {
+                                buttons[index].click();
+                            }
+                        }, i);
+
+                        console.log(`   ✅ Clicked successfully!`);
                     } catch (err) {
-                        console.log(`⚠️  Click ${i}/3 failed: ${err.message}`);
+                        console.log(`   ⚠️  Click failed: ${err.message}`);
                     }
 
-                    if (i < 3) {
-                        console.log(`⏱️  Waiting 10 seconds...`);
-                        await sleep(10000);
+                    // Wait 1 minute before next button (except for the last one)
+                    if (i < buttons.length - 1) {
+                        console.log(`   ⏱️  Waiting 1 minute before next button...`);
+                        await sleep(60000);
                     }
                 }
 
-                console.log(`\n✅ Completed all 3 click attempts`);
+                console.log('\n' + '='.repeat(80));
+                console.log(`✅ Completed clicking all ${buttons.length} buttons`);
 
                 const cookies = await page.cookies();
                 fs.writeFileSync(cookiesPath, JSON.stringify(cookies, null, 2));

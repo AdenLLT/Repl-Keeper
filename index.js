@@ -73,129 +73,65 @@ async function startBrowser() {
         });
         console.log("✓ Workspace loaded!");
 
-        await page.waitForTimeout(5000);
+        // Press Enter
+        await page.keyboard.press('Enter');
+        console.log("✓ Pressed Enter");
 
-        // Wait 10 seconds before pressing 'M' key twice
-        console.log("Waiting 10 seconds before pressing 'M' key...");
+        // Wait 10 seconds
+        console.log("Waiting 10 seconds...");
         await page.waitForTimeout(10000);
 
-        // Click on the page to ensure focus (with error handling)
-        console.log("Clicking page to ensure focus...");
-        try {
-            await page.evaluate(() => document.body.click());
-            console.log("✓ Page focused");
-        } catch (e) {
-            console.log("⚠️  Click failed, continuing anyway:", e.message);
-        }
-        await page.waitForTimeout(1000);
+        // Press Enter again
+        await page.keyboard.press('Enter');
+        console.log("✓ Pressed Enter again");
 
-        console.log("Pressing 'M' key twice using ALL METHODS...");
-
-        // FIRST M PRESS
-        console.log("FIRST M PRESS:");
-
-        // Method 1: keyboard.press with text option (CRITICAL!)
-        page.keyboard.press('Enter');
-        console.log("  ✓ Method 1: press with text option");
-        await page.waitForTimeout(300);
-
-        // Method 2: keyboard.down + keyboard.up with text
-        await page.keyboard.press('\n');
-        await page.keyboard.press('\n');
-        console.log("  ✓ Method 2: down/up with text");
-        await page.waitForTimeout(300);
-
-        // Method 3: page.type (this is the most reliable)
-        await page.type('m');
-        console.log("  ✓ Method 3: page.type");
-        await page.waitForTimeout(300);
-
-        // Method 4: keyboard.type
-        await page.keyboard.type('m');
-        console.log("  ✓ Method 4: keyboard.type");
-        await page.waitForTimeout(500);
-
-        // SECOND M PRESS
-        console.log("SECOND M PRESS:");
-
-        await page.keyboard.press('\n');
-        console.log("  ✓ Method 1: press with text option");
-        await page.waitForTimeout(300);
-
-        await page.keyboard.press('\n');
-        console.log("  ✓ Method 2: down/up with text");
-        await page.waitForTimeout(300);
-
-        await page.type('m');
-        console.log("  ✓ Method 3: page.type");
-        await page.waitForTimeout(300);
-
-        await page.keyboard.type('m');
-        console.log("  ✓ Method 4: keyboard.type");
-
-        console.log("✅ PRESSED 'M' KEY 8 TIMES TOTAL USING ALL METHODS!");
-
+        // Save cookies after initial load
         const cookies = await page.cookies();
         fs.writeFileSync(cookiesPath, JSON.stringify(cookies, null, 2));
 
-        console.log("✓ Page refresh every 1 minute (TESTING MODE)");
-        console.log("✓ Will NEVER leave workspace page\n");
+        console.log("✓ Page will refresh every 5 minutes");
+        console.log("✓ Staying on workspace page continuously\n");
 
-        // Refresh page every 1 MINUTE (for testing)
+        // Refresh page every 5 minutes
         setInterval(async () => {
             try {
-                console.log(`\n🔄 [${new Date().toLocaleTimeString()}] 1-minute page refresh (TESTING)`);
+                console.log(`\n🔄 [${new Date().toLocaleTimeString()}] Refreshing workspace...`);
 
-                // Always go to the workspace URL, never navigate away
                 await page.goto(WORKSPACE_URL, { 
                     waitUntil: 'domcontentloaded', 
                     timeout: 90000 
                 });
-                console.log('✓ Workspace refreshed');
+                console.log('✓ Workspace refreshed successfully');
 
-                await page.waitForTimeout(5000);
+                // Press Enter
+                await page.keyboard.press('Enter');
+                console.log("✓ Pressed Enter");
 
-                // Wait 10 seconds before pressing 'M' key twice after refresh
-                console.log("Waiting 10 seconds before pressing 'M' key...");
+                // Wait 10 seconds
+                console.log("Waiting 10 seconds...");
                 await page.waitForTimeout(10000);
 
-                // Click on the page to ensure focus (with error handling)
-                console.log("Clicking page to ensure focus...");
-                try {
-                    await page.evaluate(() => document.body.click());
-                    console.log("✓ Page focused");
-                } catch (e) {
-                    console.log("⚠️  Click failed, continuing anyway:", e.message);
-                }
-                await page.waitForTimeout(1000);
+                // Press Enter again
+                await page.keyboard.press('Enter');
+                console.log("✓ Pressed Enter again");
 
-                console.log("Pressing 'M' key twice using multiple methods...");
-
-                // Method 4: Using character code (77 is 'M')
-                await page.keyboard.press(String.fromCharCode(77));
-                console.log("  ✓ Method 4: char code 77");
-                await page.waitForTimeout(500);
-
-                console.log("SECOND M PRESS:");
-
-                await page.keyboard.press(String.fromCharCode(77));
-                console.log("  ✓ Method 4: char code 77");
-
-                console.log("✓ Pressed 'M' key using all available methods!");
-
-                // Update cookies
+                // Update cookies after refresh
                 const cookies = await page.cookies();
                 fs.writeFileSync(cookiesPath, JSON.stringify(cookies, null, 2));
             } catch (e) {
                 console.log('✗ Refresh failed:', e.message);
                 // Try to get back to workspace
                 try {
-                    await page.goto(WORKSPACE_URL, { waitUntil: 'domcontentloaded', timeout: 90000 });
+                    await page.goto(WORKSPACE_URL, { 
+                        waitUntil: 'domcontentloaded', 
+                        timeout: 90000 
+                    });
+                    console.log('✓ Recovered and back on workspace');
                 } catch (err) {
                     console.log('✗ Could not return to workspace:', err.message);
                 }
             }
-        }, 1 * 60 * 1000); // 1 MINUTE (for testing)
+        }, 5 * 60 * 1000); // 5 minutes
 
         // Keep alive forever
         await new Promise(() => {});

@@ -88,9 +88,7 @@ async function startBrowser() {
                             ariaLabel: b.getAttribute('aria-label'),
                             visible: b.offsetParent !== null
                         })),
-                        allButtons: Array.from(document.querySelectorAll('button')).length,
-                        bodyTextStart: document.body.innerText.substring(0, 1000),
-                        htmlSnippet: document.body.innerHTML.substring(0, 2000)
+                        allButtons: Array.from(document.querySelectorAll('button')).length
                     };
                 });
 
@@ -110,85 +108,26 @@ async function startBrowser() {
                         console.log(`   ${i + 1}. data-cy="${btn.dataCy}" aria-label="${btn.ariaLabel}" visible=${btn.visible}`);
                     });
                 }
-
-                console.log('\n📄 Body text (first 500 chars):');
-                console.log(pageInfo.bodyTextStart.substring(0, 500));
-
-                console.log('\n🔍 HTML snippet (first 1000 chars):');
-                console.log(pageInfo.htmlSnippet.substring(0, 1000));
                 console.log('='.repeat(80) + '\n');
 
-                if (!pageInfo.hasRunButton) {
-                    console.log('\n⚠️  RUN BUTTON NOT FOUND!');
-                    console.log('Possible reasons:');
-                    console.log('   1. ❌ Not logged in - cookies expired or invalid');
-                    console.log('   2. ❌ Page showing login/signup screen');
-                    console.log('   3. ❌ Workspace requires authentication');
-                    console.log('   4. ❌ Page structure changed');
-                    console.log('   5. ❌ JavaScript not fully loaded\n');
-                }
+                // Click at exact coordinates (150, 17) - 3 attempts
+                for (let i = 1; i <= 3; i++) {
+                    console.log(`\n🎯 Attempt ${i}/3 - Clicking at coordinates (150, 17)...`);
 
-                // Try clicking only if button exists
-                if (pageInfo.hasRunButton) {
-                    for (let i = 1; i <= 3; i++) {
-                        console.log(`\n🎯 Attempt ${i}/3 - Clicking run button...`);
-
-                        const result = await page.evaluate(() => {
-                            const button = document.querySelector('button[data-cy="ws-run-btn"]');
-
-                            if (!button) {
-                                return { success: false, reason: 'Button not found' };
-                            }
-
-                            const path = button.querySelector('svg path');
-                            if (!path) {
-                                return { success: false, reason: 'No SVG path found' };
-                            }
-
-                            const pathD = path.getAttribute('d');
-                            const runIconPath = 'M20.593 10.91a1.25 1.25 0 0 1 0 2.18l-14.48 8.145a1.25 1.25 0 0 1-1.863-1.09V3.855a1.25 1.25 0 0 1 1.863-1.09l14.48 8.146Z';
-
-                            if (pathD !== runIconPath) {
-                                return { 
-                                    success: false, 
-                                    reason: 'Button is not in RUN state',
-                                    pathPreview: pathD ? pathD.substring(0, 40) + '...' : 'null'
-                                };
-                            }
-
-                            const events = [
-                                new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerId: 1 }),
-                                new MouseEvent('mousedown', { bubbles: true, cancelable: true }),
-                                new PointerEvent('pointerup', { bubbles: true, cancelable: true, pointerId: 1 }),
-                                new MouseEvent('mouseup', { bubbles: true, cancelable: true }),
-                                new MouseEvent('click', { bubbles: true, cancelable: true }),
-                            ];
-
-                            events.forEach(event => button.dispatchEvent(event));
-                            button.click();
-
-                            return { success: true, reason: 'Clicked RUN button' };
-                        });
-
-                        if (result.success) {
-                            console.log(`✅ Click ${i}/3 successful!`);
-                        } else {
-                            console.log(`⚠️  Click ${i}/3 failed: ${result.reason}`);
-                            if (result.pathPreview) {
-                                console.log(`   Path: ${result.pathPreview}`);
-                            }
-                        }
-
-                        if (i < 3) {
-                            console.log(`⏱️  Waiting 10 seconds...`);
-                            await sleep(10000);
-                        }
+                    try {
+                        await page.mouse.click(150, 17);
+                        console.log(`✅ Click ${i}/3 completed at X:150, Y:17`);
+                    } catch (err) {
+                        console.log(`⚠️  Click ${i}/3 failed: ${err.message}`);
                     }
 
-                    console.log(`\n✅ Completed all 3 click attempts`);
-                } else {
-                    console.log('⏭️  Skipping clicks - button not found\n');
+                    if (i < 3) {
+                        console.log(`⏱️  Waiting 10 seconds...`);
+                        await sleep(10000);
+                    }
                 }
+
+                console.log(`\n✅ Completed all 3 click attempts`);
 
                 const cookies = await page.cookies();
                 fs.writeFileSync(cookiesPath, JSON.stringify(cookies, null, 2));

@@ -37,21 +37,18 @@ async function checkAndClickRunButton(page) {
     try {
         const result = await page.evaluate(() => {
             const BUTTON_SELECTOR = 'button[data-cy="ws-run-btn"]';
-            // We are commenting out the strict icon path check to bypass the SVG path discrepancy
-            // const RUN_ICON_PATH_DATA = 'M20.593 10.91a1.25 1.25 0 0 1 0 2.18l-14.48 8.145a1.25 1.25 0 0 1-1.863-1.09V3.855a1.25 1.25 0 0 1 1.863-1.09l14.48 8.146Z';
-
             const button = document.querySelector(BUTTON_SELECTOR);
 
             if (button) {
-                // Check if the button is ready to be clicked (i.e., not disabled and visible)
-                // The 'Stop' button is usually enabled, but the 'Run' button often has a specific state when ready.
-                // We assume if the button is visible and not disabled, it's the RUN button in a stopped state.
+                // If the button exists, we assume it's the RUN button in a stopped state, 
+                // as the Stop button is usually visually distinct or has different data attributes 
+                // when the app is actively running.
+
+                // Check for explicit 'disabled' state, though Replit often doesn't use it cleanly.
                 const isReadyToRun = !button.disabled; 
 
-                // If button is ready OR if the text is 'Run' (a backup check)
-                if (isReadyToRun || button.textContent.trim().toLowerCase() === 'run') { 
-
-                    // Click it!
+                if (isReadyToRun) { 
+                    // Use the reliable click simulation
                     const dispatchEvent = (type) => {
                         const event = new MouseEvent(type, {
                             bubbles: true,
@@ -60,25 +57,29 @@ async function checkAndClickRunButton(page) {
                         });
                         button.dispatchEvent(event);
                     };
+
+                    // Force the click sequence
                     dispatchEvent('mousedown');
                     dispatchEvent('mouseup');
                     dispatchEvent('click');
 
                     return { status: 'CLICKED' };
                 } else {
-                    return { status: 'RUNNING_OR_LOADING' };
+                    // Button exists but is disabled (e.g., during setup or transition)
+                    return { status: 'DISABLED' }; 
                 }
             } else {
-                return { status: 'NO_BUTTON' };
+                // Button not found at all (e.g., page still loading, or element removed entirely)
+                return { status: 'NOT_FOUND' };
             }
         });
 
         if (result.status === 'CLICKED') {
-            console.log('✅ CLICKED RUN BUTTON! (Bypassing icon check)');
-        } else if (result.status === 'RUNNING_OR_LOADING') {
-            console.log('✓ App is running or loading (Skipped click)');
-        } else if (result.status === 'NO_BUTTON') {
-            console.log('⚠️ Button not found');
+            console.log('✅ FORCED CLICK! RUN BUTTON INTERACTED.');
+        } else if (result.status === 'DISABLED') {
+            console.log('✓ Button found but DISABLED (App may be transitioning/running).');
+        } else if (result.status === 'NOT_FOUND') {
+            console.log('⚠️ Run button element not found.');
         }
 
         return result.status;

@@ -19,6 +19,9 @@ function findChrome() {
     throw new Error('Chrome executable not found');
 }
 
+// Helper function to wait/sleep
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 async function startBrowser() {
     console.log("Starting browser...");
     try {
@@ -29,7 +32,7 @@ async function startBrowser() {
         if (!fs.existsSync(userDataDir)) fs.mkdirSync(userDataDir, { recursive: true });
 
         const browser = await puppeteer.launch({
-            headless: "new", // Now works perfectly in headless mode!
+            headless: "new",
             executablePath: chromePath,
             userDataDir: userDataDir,
             args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
@@ -50,30 +53,50 @@ async function startBrowser() {
             console.log(`\n🔄 [${new Date().toLocaleTimeString()}] Refreshing/Checking Workspace...`);
             await page.goto(WORKSPACE_URL, { waitUntil: 'domcontentloaded', timeout: 90000 });
 
-            // --- INJECT YOUR USERSCRIPT LOGIC HERE ---
-            await page.evaluate(() => {
-                const BUTTON_SELECTOR = 'button[data-cy="ws-run-btn"]';
-                const RUN_ICON_PATH_DATA = 'M20.593 10.91a1.25 1.25 0 0 1 0 2.18l-14.48 8.145a1.25 1.25 0 0 1-1.863-1.09V3.855a1.25 1.25 0 0 1 1.863-1.09l14.48 8.146Z';
+            // Click the run button 3 times with 10 second delays
+            for (let i = 1; i <= 3; i++) {
+                console.log(`\n⏳ Attempt ${i}/3 - Waiting for button...`);
 
-                const simulateClick = (el) => {
-                    ['mousedown', 'mouseup', 'click'].forEach(t => 
-                        el.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window }))
-                    );
-                };
+                const clicked = await page.evaluate(() => {
+                    const BUTTON_SELECTOR = 'button[data-cy="ws-run-btn"]';
+                    const RUN_ICON_PATH_DATA = 'M20.593 10.91a1.25 1.25 0 0 1 0 2.18l-14.48 8.145a1.25 1.25 0 0 1-1.863-1.09V3.855a1.25 1.25 0 0 1 1.863-1.09l14.48 8.146Z';
 
-                const button = document.querySelector(BUTTON_SELECTOR);
-                if (button) {
-                    const iconPath = button.querySelector('svg path');
-                    if (iconPath && iconPath.getAttribute('d') === RUN_ICON_PATH_DATA) {
-                        simulateClick(button);
-                        console.log('Injected Script: Found RUN icon. Clicking!');
-                    } else {
-                        console.log('Injected Script: Icon is NOT Run (Triangle). Skipping.');
+                    const simulateClick = (el) => {
+                        ['mousedown', 'mouseup', 'click'].forEach(t => 
+                            el.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window }))
+                        );
+                    };
+
+                    const button = document.querySelector(BUTTON_SELECTOR);
+                    if (button) {
+                        const iconPath = button.querySelector('svg path');
+                        if (iconPath && iconPath.getAttribute('d') === RUN_ICON_PATH_DATA) {
+                            simulateClick(button);
+                            return true;
+                        } else {
+                            console.log('Icon is NOT Run (Triangle). Skipping.');
+                            return false;
+                        }
                     }
-                }
-            });
-            // ------------------------------------------
+                    return false;
+                });
 
+                if (clicked) {
+                    console.log(`✓ Click ${i}/3 successful - RUN button clicked!`);
+                } else {
+                    console.log(`✗ Click ${i}/3 failed - Button not found or not in RUN state`);
+                }
+
+                // Wait 10 seconds before next click (except after the last one)
+                if (i < 3) {
+                    console.log(`⏱️  Waiting 10 seconds before next click...`);
+                    await new Promise(resolve => setTimeout(resolve, 10000));
+                }
+            }
+
+            console.log(`\n✅ Completed all 3 click attempts`);
+
+            // Save cookies
             const cookies = await page.cookies();
             fs.writeFileSync(cookiesPath, JSON.stringify(cookies, null, 2));
         };

@@ -78,7 +78,7 @@ async function startBrowser() {
         // Press 'M' key twice
         console.log("Pressing 'M' key twice...");
         await page.keyboard.press('m');
-        await page.waitForTimeout(500);
+        await page.waitForTimeout(900);
         await page.keyboard.press('m');
         console.log("✓ Pressed 'M' key twice!");
 
@@ -105,7 +105,7 @@ async function startBrowser() {
                 // Press 'M' key twice after refresh
                 console.log("Pressing 'M' key twice after refresh...");
                 await page.keyboard.press('m');
-                await page.waitForTimeout(500);
+                await page.waitForTimeout(900);
                 await page.keyboard.press('m');
                 console.log("✓ Pressed 'M' key twice!");
 

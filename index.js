@@ -67,6 +67,7 @@ async function startBrowser() {
         }
 
         const WORKSPACE_URL = 'https://replit.com/@HUDV1/mb#main.py';
+        const runButtonSelector = 'button[aria-label="Run"]';
 
         const runLogic = async () => {
             console.log(`\n🔄 [${new Date().toLocaleTimeString()}] Starting button clicking cycle...`);
@@ -77,7 +78,28 @@ async function startBrowser() {
                 console.log('⏳ Waiting for Replit interface to fully load (30 seconds)...');
                 await sleep(30000);
 
-                // Get all buttons with type="button"
+                await page.bringToFront();
+                await page.focus('body');
+
+                try {
+                    const runBtn = await page.$(runButtonSelector);
+                    const box = await runBtn.boundingBox();
+
+                    await page.mouse.move(
+                        box.x + box.width / 2,
+                        box.y + box.height / 2,
+                        { steps: 20 }
+                    );
+
+                    await page.mouse.down();
+                    await page.waitForTimeout(50);
+                    await page.mouse.up();
+
+                    await page.keyboard.down('Control');
+                    await page.keyboard.press('Enter');
+                    await page.keyboard.up('Control');
+                } catch (err) {}
+
                 const buttons = await page.evaluate(() => {
                     const btns = Array.from(document.querySelectorAll('button[type="button"]'));
                     return btns.map((btn, index) => ({
@@ -93,7 +115,6 @@ async function startBrowser() {
                 console.log(`\n📊 Found ${buttons.length} buttons with type="button"`);
                 console.log('='.repeat(80));
 
-                // Type "HI" in input field before clicking buttons
                 console.log('\n⌨️  Typing "HI" in input field...');
                 try {
                     await page.type('#:rn:-input', 'HI');
@@ -103,7 +124,6 @@ async function startBrowser() {
                 }
                 console.log('');
 
-                // Click each button with 1 minute delay
                 for (let i = 0; i < buttons.length; i++) {
                     const btnInfo = buttons[i];
 
@@ -115,7 +135,6 @@ async function startBrowser() {
                     console.log(`   Class: ${btnInfo.className}`);
 
                     try {
-                        // Click the button using nth-of-type selector
                         await page.evaluate((index) => {
                             const buttons = document.querySelectorAll('button[type="button"]');
                             if (buttons[index]) {
@@ -128,7 +147,6 @@ async function startBrowser() {
                         console.log(`   ⚠️  Click failed: ${err.message}`);
                     }
 
-                    // Wait 1 minute before next button (except for the last one)
                     if (i < buttons.length - 1) {
                         console.log(`   ⏱️  Waiting 1 minute before next button...`);
                         await sleep(60000);

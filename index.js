@@ -4,7 +4,8 @@ const fs = require('fs');
 const path = require('path');
 const app = express();
 
-app.get('/', (req, res) => res.send('Keeper is Active - No Extension Needed'));
+// Basic web server to keep Koyeb health checks happy
+app.get('/', (req, res) => res.send('Keeper is Active - v2.1 (External Reload)'));
 app.listen(8080);
 
 function findChrome() {
@@ -33,81 +34,15 @@ function cleanupLockFiles(userDataDir) {
     }
 }
 
-let browser = null;
-
-async function startBrowser() {
-    console.log("Starting browser...");
-
-    const userDataDir = path.join(__dirname, 'chrome_user_data');
-    const cookiesPath = path.join(__dirname, 'replit_cookies.json');
-
-    try {
-        cleanupLockFiles(userDataDir);
-
-        const chromePath = findChrome();
-
-        if (!fs.existsSync(userDataDir)) fs.mkdirSync(userDataDir, { recursive: true });
-
-        browser = await puppeteer.launch({
-            headless: "new",
-            executablePath: chromePath,
-            userDataDir: userDataDir,
-            args: [
-                '--no-sandbox', 
-                '--disable-setuid-sandbox', 
-                '--disable-dev-shm-usage',
-                '--disable-web-security',
-                '--disable-features=IsolateOrigins,site-per-process'
-            ]
-        });
-
-        const page = await browser.newPage();
-        await page.setUserAgent(
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        );
-
-        // Enable console forwarding BEFORE navigation
-        page.on('console', msg => {
-            console.log(`[BROWSER] ${msg.text()}`);
-        });
-
-        // Handle page errors
-        page.on('pageerror', error => {
-            console.log(`[PAGE ERROR] ${error.message}`);
-        });
-
-        if (fs.existsSync(cookiesPath)) {
-            const cookies = JSON.parse(fs.readFileSync(cookiesPath, 'utf8'));
-            await page.setCookie(...cookies);
-            console.log(`✓ Cookies loaded (${cookies.length} cookies)`);
-        } else {
-            console.log('⚠️  No cookies found - you may need to log in first!');
-        }
-
-        const WORKSPACE_URL = 'https://replit.com/@HUDV1/mb#main.py';
-
-        await page.goto(WORKSPACE_URL, {
-            waitUntil: 'networkidle2',
-            timeout: 180000
-        });
-
-        console.log('⏳ Waiting for Replit interface to fully load (45 seconds)...');
-        await sleep(45000);
-
-        console.log('✓ Page loaded. Injecting COMPLETE userscript with refresh...');
-
-        // Inject the COMPLETE userscript INCLUDING refresh logic
-        await page.addScriptTag({
-            content: `
+// The Userscript to be injected
+const KEEPER_SCRIPT = `
 (function() {
     'use strict';
-    console.log('🚀 Replit Keeper v2.0: Initializing...');
+    console.log('🚀 Replit Keeper v2.1: Injected and Monitoring...');
 
     const RUN_BUTTON_SELECTOR = 'button[data-cy="ws-run-btn"]';
-    // This looks for the specific SVG path of the Play icon
     const PLAY_ICON_PATH = 'M20.593 10.91a1.25 1.25 0 0 1 0 2.18'; 
 
-    // Helper to find elements even inside Shadow Roots
     function querySelectorAllShadow(selector, root = document) {
         const elements = Array.from(root.querySelectorAll(selector));
         const shadowRoots = Array.from(root.querySelectorAll('*'))
@@ -123,22 +58,17 @@ async function startBrowser() {
         console.log('⚡ Attempting to click Run button...');
         ['mousedown', 'mouseup', 'click'].forEach(type => {
             el.dispatchEvent(new MouseEvent(type, {
-                view: window,
-                bubbles: true,
-                cancelable: true,
-                buttons: 1
+                view: window, bubbles: true, cancelable: true, buttons: 1
             }));
         });
     }
 
     function monitor() {
-        // Find all buttons matching the selector, even in shadow roots
         const buttons = querySelectorAllShadow(RUN_BUTTON_SELECTOR);
         const runButton = buttons[0];
 
         if (runButton) {
             const html = runButton.innerHTML;
-            // Check if the "Play" icon is present (meaning it's NOT running)
             if (html.includes(PLAY_ICON_PATH)) {
                 console.log('▶️ App is stopped. Clicking Run...');
                 triggerClick(runButton);
@@ -150,52 +80,89 @@ async function startBrowser() {
         }
     }
 
-    // Run every 10 seconds
     setInterval(monitor, 10000);
-
-    // Auto-reload page every 15 minutes to clear memory
-    setTimeout(() => {
-        console.log('🔄 Periodic reload to keep session fresh...');
-        window.location.reload();
-    }, 900000);
 })();
-            `
+`;
+
+async function startBrowser() {
+    console.log("Starting browser...");
+    const userDataDir = path.join(__dirname, 'chrome_user_data');
+    const cookiesPath = path.join(__dirname, 'replit_cookies.json');
+    let browser = null;
+
+    try {
+        cleanupLockFiles(userDataDir);
+        const chromePath = findChrome();
+        if (!fs.existsSync(userDataDir)) fs.mkdirSync(userDataDir, { recursive: true });
+
+        browser = await puppeteer.launch({
+            headless: "new",
+            executablePath: chromePath,
+            userDataDir: userDataDir,
+            args: [
+                '--no-sandbox', 
+                '--disable-setuid-sandbox', 
+                '--disable-dev-shm-usage',
+                '--disable-web-security',
+                '--disable-blink-features=AutomationControlled', // Bypass bot detection
+                '--window-size=1920,1080'
+            ]
         });
 
-        console.log('✓ COMPLETE Userscript injected (with refresh logic)!');
+        const page = await browser.newPage();
+        await page.setViewport({ width: 1920, height: 1080 });
+        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
-        // Wait a bit to see if script logs appear
-        await sleep(10000);
-        console.log('✓ Script should now be running. Monitoring console output...');
+        page.on('console', msg => console.log(`[BROWSER] ${msg.text()}`));
+        page.on('pageerror', error => console.log(`[PAGE ERROR] ${error.message}`));
 
-        // Periodic cookie saving
-        setInterval(async () => {
+        // Listen for crash/disconnect to restart the whole process
+        browser.on('disconnected', () => { throw new Error('Browser disconnected'); });
+
+        if (fs.existsSync(cookiesPath)) {
+            const cookies = JSON.parse(fs.readFileSync(cookiesPath, 'utf8'));
+            await page.setCookie(...cookies);
+            console.log(`✓ Cookies loaded (${cookies.length} cookies)`);
+        }
+
+        const WORKSPACE_URL = 'https://replit.com/@HUDV1/mb#main.py';
+
+        const loadAndInject = async () => {
+            console.log('⏳ Navigating to Workspace...');
+            await page.goto(WORKSPACE_URL, { waitUntil: 'networkidle2', timeout: 120000 });
+            console.log('⏳ Waiting 45s for UI hydration...');
+            await sleep(45000);
+            await page.addScriptTag({ content: KEEPER_SCRIPT });
+            console.log('✓ Keeper script injected.');
+        };
+
+        await loadAndInject();
+
+        // REFRESH LOGIC: Every 15 minutes, reload the page via Node.js
+        const refreshInterval = setInterval(async () => {
+            try {
+                console.log('🔄 Performing scheduled 15-minute reload...');
+                await loadAndInject();
+            } catch (err) {
+                console.log('⚠️ Reload failed:', err.message);
+            }
+        }, 900000);
+
+        // COOKIE SAVING: Every 5 minutes
+        const cookieInterval = setInterval(async () => {
             try {
                 const cookies = await page.cookies();
                 fs.writeFileSync(cookiesPath, JSON.stringify(cookies, null, 2));
-            } catch (err) {
-                console.log(`⚠️  Error saving cookies: ${err.message}`);
-            }
-        }, 60000);
+            } catch (err) { console.log('⚠️ Cookie save error'); }
+        }, 300000);
 
-        // Keep alive
+        // Keep the function alive
         await new Promise(() => {});
 
     } catch (err) {
-        console.error("❌ Error:", err.message);
-        console.error("Stack trace:", err.stack);
-
-        if (browser) {
-            try {
-                await browser.close();
-                console.log('✓ Browser closed');
-            } catch (closeErr) {
-                console.log('⚠️  Error closing browser:', closeErr.message);
-            }
-        }
-
-        cleanupLockFiles(userDataDir);
-        console.log('⏳ Restarting in 30 seconds...');
+        console.error("❌ Fatal Error:", err.message);
+        if (browser) await browser.close();
+        console.log('⏳ Restarting total process in 30 seconds...');
         setTimeout(() => startBrowser(), 30000);
     }
 }

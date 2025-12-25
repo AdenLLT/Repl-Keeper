@@ -52,13 +52,29 @@ async function startBrowser() {
             headless: "new",
             executablePath: chromePath,
             userDataDir: userDataDir,
-            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+            args: [
+                '--no-sandbox', 
+                '--disable-setuid-sandbox', 
+                '--disable-dev-shm-usage',
+                '--disable-web-security',
+                '--disable-features=IsolateOrigins,site-per-process'
+            ]
         });
 
         const page = await browser.newPage();
         await page.setUserAgent(
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         );
+
+        // Enable console forwarding BEFORE navigation
+        page.on('console', msg => {
+            console.log(`[BROWSER] ${msg.text()}`);
+        });
+
+        // Handle page errors
+        page.on('pageerror', error => {
+            console.log(`[PAGE ERROR] ${error.message}`);
+        });
 
         if (fs.existsSync(cookiesPath)) {
             const cookies = JSON.parse(fs.readFileSync(cookiesPath, 'utf8'));
@@ -70,81 +86,88 @@ async function startBrowser() {
 
         const WORKSPACE_URL = 'https://replit.com/@HUDV1/mb#main.py';
 
-        // Enable console forwarding BEFORE navigation
-        page.on('console', msg => {
-            console.log(`[BROWSER] ${msg.text()}`);
-        });
-
         await page.goto(WORKSPACE_URL, {
-            waitUntil: 'domcontentloaded',
+            waitUntil: 'networkidle2',
             timeout: 180000
         });
 
-        console.log('⏳ Waiting for Replit interface to fully load (30 seconds)...');
-        await sleep(30000);
+        console.log('⏳ Waiting for Replit interface to fully load (45 seconds)...');
+        await sleep(45000);
 
-        console.log('✓ Page loaded. Injecting userscript...');
+        console.log('✓ Page loaded. Injecting COMPLETE userscript with refresh...');
 
-        // Inject the EXACT userscript into the page (minus the refresh logic)
+        // Inject the COMPLETE userscript INCLUDING refresh logic
         await page.addScriptTag({
             content: `
-            (function() {
-            (function() {
-                'use strict';
-                // --- Configuration for Auto-Run Button Logic ---
-                // Set the interval to check for the Run button every 5 seconds (5000ms)
-                const CHECK_INTERVAL_MS = 5000;
-                // The definitive selector for the button component
-                const BUTTON_SELECTOR = 'button[data-cy="ws-run-btn"]';
-                // The 'd' attribute path data for the Play/Run triangle icon
-                const RUN_ICON_PATH_DATA = 'M20.593 10.91a1.25 1.25 0 0 1 0 2.18l-14.48 8.145a1.25 1.25 0 0 1-1.863-1.09V3.855a1.25 1.25 0 0 1 1.863-1.09l14.48 8.146Z';
+(function() {
+    'use strict';
 
-                // Function to simulate a full click sequence
-                const simulateMouseClick = (element) => {
-                    const dispatchEvent = (type) => {
-                        const event = new MouseEvent(type, {
-                            bubbles: true,
-                            cancelable: true,
-                            view: window
-                        });
-                        element.dispatchEvent(event);
-                    };
-                    dispatchEvent('mousedown');
-                    dispatchEvent('mouseup');
-                    dispatchEvent('click');
-                };
+    console.log('🚀 Replit Auto-Run (v1.8): Script injection starting...');
 
-                function monitorAndClickRunButton() {
-                    const button = document.querySelector(BUTTON_SELECTOR);
-                    // 1. Check if the button element exists
-                    if (button) {
-                        // 2. Look for the SVG path element inside the button
-                        const iconPath = button.querySelector('svg path');
-                        // 3. Check if the SVG path exists and if its 'd' attribute matches the RUN icon
-                        if (iconPath && iconPath.getAttribute('d') === RUN_ICON_PATH_DATA) {
-                            // It's the RUN button icon! Execute the click.
-                            simulateMouseClick(button);
-                            console.log('Replit Auto-Run (v1.8): Found RUN icon (Play). Restarting service.');
-                        } else {
-                            // If it's not the RUN icon (it's likely the Stop square or loading spinner), do nothing.
-                            console.log('Replit Auto-Run (v1.8): Button found, but icon is NOT the RUN (Play) triangle. App is running or stopping.');
-                        }
-                    } else {
-                        console.log('Replit Auto-Run (v1.8): Button component not found. Retrying in 5 seconds.');
-                    }
-                }
+    // --- Configuration for Auto-Run Button Logic ---
+    const CHECK_INTERVAL_MS = 5000;
+    const BUTTON_SELECTOR = 'button[data-cy="ws-run-btn"]';
+    const RUN_ICON_PATH_DATA = 'M20.593 10.91a1.25 1.25 0 0 1 0 2.18l-14.48 8.145a1.25 1.25 0 0 1-1.863-1.09V3.855a1.25 1.25 0 0 1 1.863-1.09l14.48 8.146Z';
 
-                // --- Start Execution ---
-                // Start the continuous monitoring loop for the Run button
-                console.log('Replit Auto-Run (v1.8): Starting state-aware monitor. Checking every 5 seconds.');
-                setInterval(monitorAndClickRunButton, CHECK_INTERVAL_MS);
-            })();
+    // --- Configuration for Page Refresh Logic ---
+    const REFRESH_INTERVAL_MS = 300000; // 5 minutes
+
+    // Function to simulate a full click sequence
+    const simulateMouseClick = (element) => {
+        const dispatchEvent = (type) => {
+            const event = new MouseEvent(type, {
+                bubbles: true,
+                cancelable: true,
+                view: window
+            });
+            element.dispatchEvent(event);
+        };
+        dispatchEvent('mousedown');
+        dispatchEvent('mouseup');
+        dispatchEvent('click');
+    };
+
+    function monitorAndClickRunButton() {
+        const button = document.querySelector(BUTTON_SELECTOR);
+
+        if (button) {
+            const iconPath = button.querySelector('svg path');
+
+            if (iconPath && iconPath.getAttribute('d') === RUN_ICON_PATH_DATA) {
+                simulateMouseClick(button);
+                console.log('Replit Auto-Run (v1.8): Found RUN icon (Play). Restarting service.');
+            } else {
+                console.log('Replit Auto-Run (v1.8): Button found, but icon is NOT the RUN (Play) triangle. App is running or stopping.');
+            }
+        } else {
+            console.log('Replit Auto-Run (v1.8): Button component not found. Retrying in 5 seconds.');
+        }
+    }
+
+    function refreshPage() {
+        console.log('Replit Auto-Run (v1.8): 5-minute refresh complete. Reloading the page now.');
+        window.location.reload();
+    }
+
+    // --- Start Execution ---
+    console.log('Replit Auto-Run (v1.8): Starting state-aware monitor. Checking every 5 seconds.');
+    setInterval(monitorAndClickRunButton, CHECK_INTERVAL_MS);
+
+    console.log(\`Replit Auto-Run (v1.8): Starting page refresh timer. Page will reload every \${REFRESH_INTERVAL_MS / 60000} minutes.\`);
+    setInterval(refreshPage, REFRESH_INTERVAL_MS);
+
+    console.log('✅ Replit Auto-Run (v1.8): All timers started successfully!');
+})();
             `
         });
 
-        console.log('✓ Userscript injected and running!');
+        console.log('✓ COMPLETE Userscript injected (with refresh logic)!');
 
-        // Periodic cookie saving from Node.js side
+        // Wait a bit to see if script logs appear
+        await sleep(10000);
+        console.log('✓ Script should now be running. Monitoring console output...');
+
+        // Periodic cookie saving
         setInterval(async () => {
             try {
                 const cookies = await page.cookies();
@@ -152,12 +175,14 @@ async function startBrowser() {
             } catch (err) {
                 console.log(`⚠️  Error saving cookies: ${err.message}`);
             }
-        }, 60000); // Save cookies every minute
+        }, 60000);
 
+        // Keep alive
         await new Promise(() => {});
 
     } catch (err) {
-        console.error("Error:", err.message);
+        console.error("❌ Error:", err.message);
+        console.error("Stack trace:", err.stack);
 
         if (browser) {
             try {

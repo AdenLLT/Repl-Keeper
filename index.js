@@ -81,49 +81,70 @@ async function startBrowser() {
         console.log('⏳ Waiting for Replit interface to fully load (30 seconds)...');
         await sleep(30000);
 
-        console.log('✓ Page loaded. Starting state-aware monitor. Checking every 5 seconds.');
+        console.log('✓ Page loaded. Injecting userscript into page...');
 
-        // Start the monitoring loop
-        setInterval(async () => {
-            try {
-                await page.evaluate((BUTTON_SELECTOR, RUN_ICON_PATH_DATA) => {
+        // Inject the userscript directly into the page context (like Tampermonkey does)
+        await page.evaluateOnNewDocument((BUTTON_SELECTOR, RUN_ICON_PATH_DATA, CHECK_INTERVAL_MS) => {
+            // This runs in the browser context, just like Tampermonkey
+            (function() {
+                'use strict';
+
+                const simulateMouseClick = (element) => {
+                    const dispatchEvent = (type) => {
+                        const event = new MouseEvent(type, {
+                            bubbles: true,
+                            cancelable: true,
+                            view: window
+                        });
+                        element.dispatchEvent(event);
+                    };
+                    dispatchEvent('mousedown');
+                    dispatchEvent('mouseup');
+                    dispatchEvent('click');
+                };
+
+                function monitorAndClickRunButton() {
                     const button = document.querySelector(BUTTON_SELECTOR);
 
                     if (button) {
                         const iconPath = button.querySelector('svg path');
 
                         if (iconPath && iconPath.getAttribute('d') === RUN_ICON_PATH_DATA) {
-                            const simulateMouseClick = (element) => {
-                                const dispatchEvent = (type) => {
-                                    const event = new MouseEvent(type, {
-                                        bubbles: true,
-                                        cancelable: true,
-                                        view: window
-                                    });
-                                    element.dispatchEvent(event);
-                                };
-                                dispatchEvent('mousedown');
-                                dispatchEvent('mouseup');
-                                dispatchEvent('click');
-                            };
-
                             simulateMouseClick(button);
-                            console.log('Replit Auto-Run: Found RUN icon (Play). Restarting service.');
+                            console.log('Replit Auto-Run (v1.8): Found RUN icon (Play). Restarting service.');
                         } else {
-                            console.log('Replit Auto-Run: Button found, but icon is NOT the RUN (Play) triangle. App is running or stopping.');
+                            console.log('Replit Auto-Run (v1.8): Button found, but icon is NOT the RUN (Play) triangle. App is running or stopping.');
                         }
                     } else {
-                        console.log('Replit Auto-Run: Button component not found. Retrying in 5 seconds.');
+                        console.log('Replit Auto-Run (v1.8): Button component not found. Retrying in 5 seconds.');
                     }
-                }, BUTTON_SELECTOR, RUN_ICON_PATH_DATA);
+                }
 
-                // Save cookies periodically
+                console.log('Replit Auto-Run (v1.8): Starting state-aware monitor. Checking every 5 seconds.');
+                setInterval(monitorAndClickRunButton, CHECK_INTERVAL_MS);
+            })();
+        }, BUTTON_SELECTOR, RUN_ICON_PATH_DATA, CHECK_INTERVAL_MS);
+
+        // Reload the page to trigger the injected script
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        console.log('✓ Page reloaded with userscript injected.');
+        await sleep(30000);
+        console.log('✓ Userscript is now running in page context (like Tampermonkey).');
+
+        // Enable console forwarding from page to Node.js
+        page.on('console', msg => {
+            console.log(`[USERSCRIPT] ${msg.text()}`);
+        });
+
+        // Periodic cookie saving from Node.js side
+        setInterval(async () => {
+            try {
                 const cookies = await page.cookies();
                 fs.writeFileSync(cookiesPath, JSON.stringify(cookies, null, 2));
             } catch (err) {
-                console.log(`⚠️  Error in monitor cycle: ${err.message}`);
+                console.log(`⚠️  Error saving cookies: ${err.message}`);
             }
-        }, CHECK_INTERVAL_MS);
+        }, 60000); // Save cookies every minute
 
         await new Promise(() => {});
 

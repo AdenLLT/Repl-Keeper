@@ -83,46 +83,39 @@ async function startBrowser() {
 
         console.log('✓ Page loaded. Starting state-aware monitor. Checking every 5 seconds.');
 
-        // Inject the userscript logic into the page
-        await page.evaluateOnNewDocument((BUTTON_SELECTOR, RUN_ICON_PATH_DATA) => {
-            window.monitorAndClickRunButton = function() {
-                const button = document.querySelector(BUTTON_SELECTOR);
-
-                if (button) {
-                    const iconPath = button.querySelector('svg path');
-
-                    if (iconPath && iconPath.getAttribute('d') === RUN_ICON_PATH_DATA) {
-                        const simulateMouseClick = (element) => {
-                            const dispatchEvent = (type) => {
-                                const event = new MouseEvent(type, {
-                                    bubbles: true,
-                                    cancelable: true,
-                                    view: window
-                                });
-                                element.dispatchEvent(event);
-                            };
-                            dispatchEvent('mousedown');
-                            dispatchEvent('mouseup');
-                            dispatchEvent('click');
-                        };
-
-                        simulateMouseClick(button);
-                        console.log('Replit Auto-Run: Found RUN icon (Play). Restarting service.');
-                    } else {
-                        console.log('Replit Auto-Run: Button found, but icon is NOT the RUN (Play) triangle. App is running or stopping.');
-                    }
-                } else {
-                    console.log('Replit Auto-Run: Button component not found. Retrying in 5 seconds.');
-                }
-            };
-        }, BUTTON_SELECTOR, RUN_ICON_PATH_DATA);
-
-        // Start the monitoring loop from Node.js side
+        // Start the monitoring loop
         setInterval(async () => {
             try {
-                await page.evaluate(() => {
-                    window.monitorAndClickRunButton();
-                });
+                await page.evaluate((BUTTON_SELECTOR, RUN_ICON_PATH_DATA) => {
+                    const button = document.querySelector(BUTTON_SELECTOR);
+
+                    if (button) {
+                        const iconPath = button.querySelector('svg path');
+
+                        if (iconPath && iconPath.getAttribute('d') === RUN_ICON_PATH_DATA) {
+                            const simulateMouseClick = (element) => {
+                                const dispatchEvent = (type) => {
+                                    const event = new MouseEvent(type, {
+                                        bubbles: true,
+                                        cancelable: true,
+                                        view: window
+                                    });
+                                    element.dispatchEvent(event);
+                                };
+                                dispatchEvent('mousedown');
+                                dispatchEvent('mouseup');
+                                dispatchEvent('click');
+                            };
+
+                            simulateMouseClick(button);
+                            console.log('Replit Auto-Run: Found RUN icon (Play). Restarting service.');
+                        } else {
+                            console.log('Replit Auto-Run: Button found, but icon is NOT the RUN (Play) triangle. App is running or stopping.');
+                        }
+                    } else {
+                        console.log('Replit Auto-Run: Button component not found. Retrying in 5 seconds.');
+                    }
+                }, BUTTON_SELECTOR, RUN_ICON_PATH_DATA);
 
                 // Save cookies periodically
                 const cookies = await page.cookies();

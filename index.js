@@ -69,111 +69,68 @@ async function startBrowser() {
         }
 
         const WORKSPACE_URL = 'https://replit.com/@HUDV1/mb#main.py';
-        const runButtonSelector = 'button[aria-label="Run"]';
+        const CHECK_INTERVAL_MS = 5000;
+        const BUTTON_SELECTOR = 'button[data-cy="ws-run-btn"]';
+        const RUN_ICON_PATH_DATA = 'M20.593 10.91a1.25 1.25 0 0 1 0 2.18l-14.48 8.145a1.25 1.25 0 0 1-1.863-1.09V3.855a1.25 1.25 0 0 1 1.863-1.09l14.48 8.146Z';
 
-        const runLogic = async () => {
-            console.log(`\n🔄 [${new Date().toLocaleTimeString()}] Starting button clicking cycle...`);
+        await page.goto(WORKSPACE_URL, {
+            waitUntil: 'domcontentloaded',
+            timeout: 180000
+        });
 
+        console.log('⏳ Waiting for Replit interface to fully load (30 seconds)...');
+        await sleep(30000);
+
+        console.log('✓ Page loaded. Starting state-aware monitor. Checking every 5 seconds.');
+
+        // Inject the userscript logic into the page
+        await page.evaluateOnNewDocument((BUTTON_SELECTOR, RUN_ICON_PATH_DATA) => {
+            window.monitorAndClickRunButton = function() {
+                const button = document.querySelector(BUTTON_SELECTOR);
+
+                if (button) {
+                    const iconPath = button.querySelector('svg path');
+
+                    if (iconPath && iconPath.getAttribute('d') === RUN_ICON_PATH_DATA) {
+                        const simulateMouseClick = (element) => {
+                            const dispatchEvent = (type) => {
+                                const event = new MouseEvent(type, {
+                                    bubbles: true,
+                                    cancelable: true,
+                                    view: window
+                                });
+                                element.dispatchEvent(event);
+                            };
+                            dispatchEvent('mousedown');
+                            dispatchEvent('mouseup');
+                            dispatchEvent('click');
+                        };
+
+                        simulateMouseClick(button);
+                        console.log('Replit Auto-Run: Found RUN icon (Play). Restarting service.');
+                    } else {
+                        console.log('Replit Auto-Run: Button found, but icon is NOT the RUN (Play) triangle. App is running or stopping.');
+                    }
+                } else {
+                    console.log('Replit Auto-Run: Button component not found. Retrying in 5 seconds.');
+                }
+            };
+        }, BUTTON_SELECTOR, RUN_ICON_PATH_DATA);
+
+        // Start the monitoring loop from Node.js side
+        setInterval(async () => {
             try {
-                await page.goto(WORKSPACE_URL, {
-                    waitUntil: 'domcontentloaded',
-                    timeout: 180000
+                await page.evaluate(() => {
+                    window.monitorAndClickRunButton();
                 });
 
-                console.log('⏳ Waiting for Replit interface to fully load (30 seconds)...');
-                await sleep(30000);
-
-                // ✅ WAIT FOR RUN BUTTON
-                await page.waitForSelector(runButtonSelector, { timeout: 60000 });
-
-                // ✅ FORCE FOCUS
-                await page.bringToFront();
-                await page.focus('body');
-
-                // ✅ REAL MOUSE CLICK
-                try {
-                    const runBtn = await page.$(runButtonSelector);
-                    const box = await runBtn.boundingBox();
-
-                    await page.mouse.move(
-                        box.x + box.width / 2,
-                        box.y + box.height / 2,
-                        { steps: 20 }
-                    );
-
-                    await page.mouse.down();
-                    await page.waitForTimeout(50);
-                    await page.mouse.up();
-
-                    // ✅ KEYBOARD SHORTCUT
-                    await page.keyboard.down('Control');
-                    await page.keyboard.press('Enter');
-                    await page.keyboard.up('Control');
-                } catch (err) {}
-
-                const buttons = await page.evaluate(() => {
-                    const btns = Array.from(document.querySelectorAll('button[type="button"]'));
-                    return btns.map((btn, index) => ({
-                        index,
-                        text: btn.innerText.trim().substring(0, 50) || 'No text',
-                        ariaLabel: btn.getAttribute('aria-label') || 'No aria-label',
-                        dataCy: btn.getAttribute('data-cy') || 'No data-cy',
-                        className: btn.className.substring(0, 100) || 'No class',
-                        visible: btn.offsetParent !== null
-                    }));
-                });
-
-                console.log(`\n📊 Found ${buttons.length} buttons with type="button"`);
-                console.log('='.repeat(80));
-
-                console.log('\n⌨️  Typing "HI" in input field...');
-                try {
-                    await page.type('#:rn:-input', 'HI');
-                    console.log('✅ Successfully typed "HI"');
-                } catch (err) {
-                    console.log(`⚠️  Failed to type in input: ${err.message}`);
-                }
-                console.log('');
-
-                for (let i = 0; i < buttons.length; i++) {
-                    const btnInfo = buttons[i];
-
-                    console.log(`\n🎯 Button ${i + 1}/${buttons.length}:`);
-                    console.log(`   Text: "${btnInfo.text}"`);
-                    console.log(`   Aria-label: "${btnInfo.ariaLabel}"`);
-                    console.log(`   Data-cy: "${btnInfo.dataCy}"`);
-                    console.log(`   Visible: ${btnInfo.visible}`);
-                    console.log(`   Class: ${btnInfo.className}`);
-
-                    try {
-                        await page.evaluate((index) => {
-                            const buttons = document.querySelectorAll('button[type="button"]');
-                            if (buttons[index]) buttons[index].click();
-                        }, i);
-                        console.log(`   ✅ Clicked successfully!`);
-                    } catch (err) {
-                        console.log(`   ⚠️  Click failed: ${err.message}`);
-                    }
-
-                    if (i < buttons.length - 1) {
-                        console.log(`   ⏱️  Waiting 1 minute before next button...`);
-                        await sleep(60000);
-                    }
-                }
-
-                console.log('\n' + '='.repeat(80));
-                console.log(`✅ Completed clicking all ${buttons.length} buttons`);
-
+                // Save cookies periodically
                 const cookies = await page.cookies();
                 fs.writeFileSync(cookiesPath, JSON.stringify(cookies, null, 2));
-
             } catch (err) {
-                console.log(`⚠️  Error in runLogic: ${err.message}`);
+                console.log(`⚠️  Error in monitor cycle: ${err.message}`);
             }
-        };
-
-        await runLogic();
-        setInterval(runLogic, 5 * 60 * 1000);
+        }, CHECK_INTERVAL_MS);
 
         await new Promise(() => {});
 

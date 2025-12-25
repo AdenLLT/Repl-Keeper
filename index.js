@@ -69,9 +69,11 @@ async function startBrowser() {
         }
 
         const WORKSPACE_URL = 'https://replit.com/@HUDV1/mb#main.py';
-        const CHECK_INTERVAL_MS = 5000;
-        const BUTTON_SELECTOR = 'button[data-cy="ws-run-btn"]';
-        const RUN_ICON_PATH_DATA = 'M20.593 10.91a1.25 1.25 0 0 1 0 2.18l-14.48 8.145a1.25 1.25 0 0 1-1.863-1.09V3.855a1.25 1.25 0 0 1 1.863-1.09l14.48 8.146Z';
+
+        // Enable console forwarding BEFORE navigation
+        page.on('console', msg => {
+            console.log(`[BROWSER] ${msg.text()}`);
+        });
 
         await page.goto(WORKSPACE_URL, {
             waitUntil: 'domcontentloaded',
@@ -81,14 +83,23 @@ async function startBrowser() {
         console.log('⏳ Waiting for Replit interface to fully load (30 seconds)...');
         await sleep(30000);
 
-        console.log('✓ Page loaded. Injecting userscript into page...');
+        console.log('✓ Page loaded. Injecting userscript...');
 
-        // Inject the userscript directly into the page context (like Tampermonkey does)
-        await page.evaluateOnNewDocument((BUTTON_SELECTOR, RUN_ICON_PATH_DATA, CHECK_INTERVAL_MS) => {
-            // This runs in the browser context, just like Tampermonkey
+        // Inject the EXACT userscript into the page (minus the refresh logic)
+        await page.addScriptTag({
+            content: `
+            (function() {
             (function() {
                 'use strict';
+                // --- Configuration for Auto-Run Button Logic ---
+                // Set the interval to check for the Run button every 5 seconds (5000ms)
+                const CHECK_INTERVAL_MS = 5000;
+                // The definitive selector for the button component
+                const BUTTON_SELECTOR = 'button[data-cy="ws-run-btn"]';
+                // The 'd' attribute path data for the Play/Run triangle icon
+                const RUN_ICON_PATH_DATA = 'M20.593 10.91a1.25 1.25 0 0 1 0 2.18l-14.48 8.145a1.25 1.25 0 0 1-1.863-1.09V3.855a1.25 1.25 0 0 1 1.863-1.09l14.48 8.146Z';
 
+                // Function to simulate a full click sequence
                 const simulateMouseClick = (element) => {
                     const dispatchEvent = (type) => {
                         const event = new MouseEvent(type, {
@@ -105,14 +116,17 @@ async function startBrowser() {
 
                 function monitorAndClickRunButton() {
                     const button = document.querySelector(BUTTON_SELECTOR);
-
+                    // 1. Check if the button element exists
                     if (button) {
+                        // 2. Look for the SVG path element inside the button
                         const iconPath = button.querySelector('svg path');
-
+                        // 3. Check if the SVG path exists and if its 'd' attribute matches the RUN icon
                         if (iconPath && iconPath.getAttribute('d') === RUN_ICON_PATH_DATA) {
+                            // It's the RUN button icon! Execute the click.
                             simulateMouseClick(button);
                             console.log('Replit Auto-Run (v1.8): Found RUN icon (Play). Restarting service.');
                         } else {
+                            // If it's not the RUN icon (it's likely the Stop square or loading spinner), do nothing.
                             console.log('Replit Auto-Run (v1.8): Button found, but icon is NOT the RUN (Play) triangle. App is running or stopping.');
                         }
                     } else {
@@ -120,21 +134,15 @@ async function startBrowser() {
                     }
                 }
 
+                // --- Start Execution ---
+                // Start the continuous monitoring loop for the Run button
                 console.log('Replit Auto-Run (v1.8): Starting state-aware monitor. Checking every 5 seconds.');
                 setInterval(monitorAndClickRunButton, CHECK_INTERVAL_MS);
             })();
-        }, BUTTON_SELECTOR, RUN_ICON_PATH_DATA, CHECK_INTERVAL_MS);
-
-        // Reload the page to trigger the injected script
-        await page.reload({ waitUntil: 'domcontentloaded' });
-        console.log('✓ Page reloaded with userscript injected.');
-        await sleep(30000);
-        console.log('✓ Userscript is now running in page context (like Tampermonkey).');
-
-        // Enable console forwarding from page to Node.js
-        page.on('console', msg => {
-            console.log(`[USERSCRIPT] ${msg.text()}`);
+            `
         });
+
+        console.log('✓ Userscript injected and running!');
 
         // Periodic cookie saving from Node.js side
         setInterval(async () => {

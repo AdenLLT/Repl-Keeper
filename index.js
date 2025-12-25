@@ -101,62 +101,63 @@ async function startBrowser() {
             content: `
 (function() {
     'use strict';
+    console.log('🚀 Replit Keeper v2.0: Initializing...');
 
-    console.log('🚀 Replit Auto-Run (v1.8): Script injection starting...');
+    const RUN_BUTTON_SELECTOR = 'button[data-cy="ws-run-btn"]';
+    // This looks for the specific SVG path of the Play icon
+    const PLAY_ICON_PATH = 'M20.593 10.91a1.25 1.25 0 0 1 0 2.18'; 
 
-    // --- Configuration for Auto-Run Button Logic ---
-    const CHECK_INTERVAL_MS = 5000;
-    const BUTTON_SELECTOR = 'button[data-cy="ws-run-btn"]';
-    const RUN_ICON_PATH_DATA = 'M20.593 10.91a1.25 1.25 0 0 1 0 2.18l-14.48 8.145a1.25 1.25 0 0 1-1.863-1.09V3.855a1.25 1.25 0 0 1 1.863-1.09l14.48 8.146Z';
+    // Helper to find elements even inside Shadow Roots
+    function querySelectorAllShadow(selector, root = document) {
+        const elements = Array.from(root.querySelectorAll(selector));
+        const shadowRoots = Array.from(root.querySelectorAll('*'))
+            .map(el => el.shadowRoot)
+            .filter(Boolean);
+        for (const shadowRoot of shadowRoots) {
+            elements.push(...querySelectorAllShadow(selector, shadowRoot));
+        }
+        return elements;
+    }
 
-    // --- Configuration for Page Refresh Logic ---
-    const REFRESH_INTERVAL_MS = 300000; // 5 minutes
-
-    // Function to simulate a full click sequence
-    const simulateMouseClick = (element) => {
-        const dispatchEvent = (type) => {
-            const event = new MouseEvent(type, {
+    function triggerClick(el) {
+        console.log('⚡ Attempting to click Run button...');
+        ['mousedown', 'mouseup', 'click'].forEach(type => {
+            el.dispatchEvent(new MouseEvent(type, {
+                view: window,
                 bubbles: true,
                 cancelable: true,
-                view: window
-            });
-            element.dispatchEvent(event);
-        };
-        dispatchEvent('mousedown');
-        dispatchEvent('mouseup');
-        dispatchEvent('click');
-    };
+                buttons: 1
+            }));
+        });
+    }
 
-    function monitorAndClickRunButton() {
-        const button = document.querySelector(BUTTON_SELECTOR);
+    function monitor() {
+        // Find all buttons matching the selector, even in shadow roots
+        const buttons = querySelectorAllShadow(RUN_BUTTON_SELECTOR);
+        const runButton = buttons[0];
 
-        if (button) {
-            const iconPath = button.querySelector('svg path');
-
-            if (iconPath && iconPath.getAttribute('d') === RUN_ICON_PATH_DATA) {
-                simulateMouseClick(button);
-                console.log('Replit Auto-Run (v1.8): Found RUN icon (Play). Restarting service.');
+        if (runButton) {
+            const html = runButton.innerHTML;
+            // Check if the "Play" icon is present (meaning it's NOT running)
+            if (html.includes(PLAY_ICON_PATH)) {
+                console.log('▶️ App is stopped. Clicking Run...');
+                triggerClick(runButton);
             } else {
-                console.log('Replit Auto-Run (v1.8): Button found, but icon is NOT the RUN (Play) triangle. App is running or stopping.');
+                console.log('✅ App is already running (Stop icon detected).');
             }
         } else {
-            console.log('Replit Auto-Run (v1.8): Button component not found. Retrying in 5 seconds.');
+            console.log('🔍 Searching for Run button...');
         }
     }
 
-    function refreshPage() {
-        console.log('Replit Auto-Run (v1.8): 5-minute refresh complete. Reloading the page now.');
+    // Run every 10 seconds
+    setInterval(monitor, 10000);
+
+    // Auto-reload page every 15 minutes to clear memory
+    setTimeout(() => {
+        console.log('🔄 Periodic reload to keep session fresh...');
         window.location.reload();
-    }
-
-    // --- Start Execution ---
-    console.log('Replit Auto-Run (v1.8): Starting state-aware monitor. Checking every 5 seconds.');
-    setInterval(monitorAndClickRunButton, CHECK_INTERVAL_MS);
-
-    console.log(\`Replit Auto-Run (v1.8): Starting page refresh timer. Page will reload every \${REFRESH_INTERVAL_MS / 60000} minutes.\`);
-    setInterval(refreshPage, REFRESH_INTERVAL_MS);
-
-    console.log('✅ Replit Auto-Run (v1.8): All timers started successfully!');
+    }, 900000);
 })();
             `
         });

@@ -16,9 +16,12 @@ function findChrome() {
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 async function startBrowser() {
-    console.log("Starting browser...");
     const userDataDir = path.join(__dirname, 'chrome_user_data');
     const cookiesPath = path.join(__dirname, 'replit_cookies.json');
+    const REPL_URL = 'https://replit.com/@HUDV1/mb#main.py';
+    const RELOAD_INTERVAL = 60 * 60 * 1000; // Reload every 60 minutes
+
+    console.log("Starting browser session...");
     let browser = null;
 
     try {
@@ -27,12 +30,13 @@ async function startBrowser() {
             headless: "new",
             executablePath: chromePath,
             userDataDir: userDataDir,
-            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-web-security']
+            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
         });
 
         const page = await browser.newPage();
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
+        // Pass browser logs to terminal
         page.on('console', msg => console.log(`[BROWSER] ${msg.text()}`));
 
         if (fs.existsSync(cookiesPath)) {
@@ -41,54 +45,69 @@ async function startBrowser() {
             console.log(`✓ Cookies loaded`);
         }
 
-        console.log('⏳ Navigating to Workspace...');
-        // Increased timeout to 3 minutes because Replit is slow on Koyeb
-        await page.goto('https://replit.com/@HUDV1/mb#main.py', { waitUntil: 'networkidle2', timeout: 180000 });
+        async function loadAndInject() {
+            console.log(`⏳ Loading Replit Workspace...`);
+            try {
+                await page.goto(REPL_URL, { waitUntil: 'networkidle2', timeout: 120000 });
+                await sleep(30000); // Wait for hydration
 
-        console.log('⏳ Waiting 60s for full load...');
-        await sleep(60000);
+                await page.addScriptTag({
+                    content: `
+                    (function() {
+                        console.log('🚀 Keeper v2.3: Monitoring Started');
+                        const RUN_SELECTOR = 'button[data-cy="ws-run-btn"]';
+                        const PLAY_PATH = 'M20.593 10.91a1.25 1.25 0 0 1 0 2.18';
 
-        await page.addScriptTag({
-            content: `
-            (function() {
-                console.log('🚀 Keeper v2.2 Active');
-                const RUN_SELECTOR = 'button[data-cy="ws-run-btn"]';
-                const PLAY_PATH = 'M20.593 10.91a1.25 1.25 0 0 1 0 2.18';
+                        function findInShadow(sel, root = document) {
+                            let el = root.querySelector(sel);
+                            if (el) return [el];
+                            let found = [];
+                            root.querySelectorAll('*').forEach(node => {
+                                if (node.shadowRoot) found.push(...findInShadow(sel, node.shadowRoot));
+                            });
+                            return found;
+                        }
 
-                function findInShadow(sel, root = document) {
-                    let el = root.querySelector(sel);
-                    if (el) return [el];
-                    let found = [];
-                    root.querySelectorAll('*').forEach(node => {
-                        if (node.shadowRoot) found.push(...findInShadow(sel, node.shadowRoot));
-                    });
-                    return found;
-                }
+                        setInterval(() => {
+                            const btn = findInShadow(RUN_SELECTOR)[0];
+                            if (btn) {
+                                if (btn.innerHTML.includes(PLAY_PATH)) {
+                                    console.log('▶️ Clicked Run');
+                                    ['mousedown', 'mouseup', 'click'].forEach(t => 
+                                        btn.dispatchEvent(new MouseEvent(t, {bubbles: true, view: window})));
+                                } else {
+                                    console.log('✅ App Running');
+                                }
+                            } else {
+                                console.log('🔍 Searching for button...');
+                            }
+                        }, 15000);
+                    })();`
+                });
+                console.log('✓ Script injected successfully.');
+            } catch (e) {
+                console.error("Load failed, retrying in 30s...", e.message);
+                await sleep(30000);
+                return loadAndInject();
+            }
+        }
 
-                setInterval(() => {
-                    const btn = findInShadow(RUN_SELECTOR)[0];
-                    if (btn && btn.innerHTML.includes(PLAY_PATH)) {
-                        console.log('▶️ Clicking Run');
-                        ['mousedown', 'mouseup', 'click'].forEach(t => 
-                            btn.dispatchEvent(new MouseEvent(t, {bubbles: true, view: window})));
-                    } else if (btn) {
-                        console.log('✅ Running...');
-                    } else {
-                        console.log('🔍 Searching...');
-                    }
-                }, 10000);
-            })();`
-        });
+        // Initial Load
+        await loadAndInject();
 
-        console.log('✓ Script injected. Monitoring...');
+        // Periodically refresh the page to prevent WebSocket/Memory death
+        setInterval(async () => {
+            console.log("🔄 Performing scheduled 60-minute refresh...");
+            await loadAndInject();
+        }, RELOAD_INTERVAL);
 
-        // Just stay alive - let the browser handle its own persistence
+        // Keep process alive
         await new Promise(() => {});
 
     } catch (err) {
-        console.error("❌ Error:", err.message);
+        console.error("❌ Fatal Error:", err.message);
         if (browser) await browser.close();
-        setTimeout(startBrowser, 10000);
+        setTimeout(startBrowser, 10000); // Restart entire browser on crash
     }
 }
 

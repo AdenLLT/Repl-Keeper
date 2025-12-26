@@ -43,17 +43,11 @@ async function startBrowser() {
             console.log(`✓ Cookies loaded`);
         }
 
-        async function loadAndInject() {
-            console.log(`⏳ Loading Replit Workspace...`);
+        // Helper function to find button in shadow DOM and click with Puppeteer
+        async function findAndClickButton(page) {
             try {
-                await page.goto(REPL_URL, { waitUntil: 'networkidle2', timeout: 120000 });
-                await sleep(25000); // Give Replit extra time to load the environment
-
-                await page.evaluate(() => {
-                    const CHECK_INTERVAL_MS = 5000;
-                    const FORCE_INTERVAL_MS = 50 * 60 * 1000; // 50 Minutes
+                const buttonHandle = await page.evaluateHandle(() => {
                     const BUTTON_SELECTOR = 'button[data-cy="ws-run-btn"]';
-                    const RUN_ICON_DATA = 'M20.593 10.91a1.25 1.25 0 0 1 0 2.18l-14.48 8.145a1.25 1.25 0 0 1-1.863-1.09V3.855a1.25 1.25 0 0 1 1.863-1.09l14.48 8.146Z';
 
                     function findInShadow(selector, root = document) {
                         const el = root.querySelector(selector);
@@ -68,47 +62,79 @@ async function startBrowser() {
                         return null;
                     }
 
-                    const clickBtn = (element) => {
-                        ['mousedown', 'mouseup', 'click'].forEach(type => {
-                            element.dispatchEvent(new MouseEvent(type, { bubbles: true, view: window }));
-                        });
-                    };
-
-                    const forceRestartAction = () => {
-                        const button = findInShadow(BUTTON_SELECTOR);
-                        if (button) {
-                            console.log('🔄 FORCE RESTART TRIGGERED: Clicking STOP/RUN sequence...');
-                            clickBtn(button); // Click 1: Stop (or Start if it was off)
-
-                            setTimeout(() => {
-                                console.log('🔄 FORCE RESTART: Clicking RUN again...');
-                                clickBtn(button); // Click 2: Ensure it is Start
-                            }, 4000);
-                        } else {
-                            console.log('⚠️ Force restart failed: Button not found.');
-                        }
-                    };
-
-                    // 1. MONITORING LOOP (Standard Auto-Restart if crashed)
-                    window.replitMonitor = setInterval(() => {
-                        const button = findInShadow(BUTTON_SELECTOR);
-                        if (button) {
-                            const iconPath = button.querySelector('svg path');
-                            if (iconPath && iconPath.getAttribute('d') === RUN_ICON_DATA) {
-                                console.log('▶️ State: Stopped. Auto-restarting...');
-                                clickBtn(button);
-                            }
-                        }
-                    }, CHECK_INTERVAL_MS);
-
-                    // 2. SCHEDULED FORCE RESTART (Every 50 Minutes)
-                    window.forceRestartTimer = setInterval(forceRestartAction, FORCE_INTERVAL_MS);
-
-                    // 3. STARTUP FORCE RESTART (Click immediately on load)
-                    console.log('🚀 Monitor Active. Executing Startup Force Click...');
-                    forceRestartAction();
-
+                    return findInShadow(BUTTON_SELECTOR);
                 });
+
+                const button = buttonHandle.asElement();
+                if (button) {
+                    await button.click();
+                    return true;
+                }
+                return false;
+            } catch (e) {
+                console.error('Click error:', e.message);
+                return false;
+            }
+        }
+
+        // Helper to check if button shows "stopped" state (play icon)
+        async function isButtonStopped(page) {
+            return await page.evaluate(() => {
+                const RUN_ICON_DATA = 'M20.593 10.91a1.25 1.25 0 0 1 0 2.18l-14.48 8.145a1.25 1.25 0 0 1-1.863-1.09V3.855a1.25 1.25 0 0 1 1.863-1.09l14.48 8.146Z';
+                const BUTTON_SELECTOR = 'button[data-cy="ws-run-btn"]';
+
+                function findInShadow(selector, root = document) {
+                    const el = root.querySelector(selector);
+                    if (el) return el;
+                    const all = root.querySelectorAll('*');
+                    for (const node of all) {
+                        if (node.shadowRoot) {
+                            const found = findInShadow(selector, node.shadowRoot);
+                            if (found) return found;
+                        }
+                    }
+                    return null;
+                }
+
+                const button = findInShadow(BUTTON_SELECTOR);
+                if (button) {
+                    const iconPath = button.querySelector('svg path');
+                    if (iconPath && iconPath.getAttribute('d') === RUN_ICON_DATA) {
+                        return true;
+                    }
+                }
+                return false;
+            });
+        }
+
+        async function forceRestartAction(page) {
+            console.log('🔄 FORCE RESTART TRIGGERED: Clicking STOP/RUN sequence...');
+
+            // First click - stop if running, or start if stopped
+            const clicked1 = await findAndClickButton(page);
+            if (!clicked1) {
+                console.log('⚠️ Force restart failed: Button not found.');
+                return;
+            }
+
+            await sleep(4000);
+
+            // Second click - ensure it's running
+            console.log('🔄 FORCE RESTART: Clicking RUN again...');
+            await findAndClickButton(page);
+        }
+
+        async function loadAndInject() {
+            console.log(`⏳ Loading Replit Workspace...`);
+            try {
+                await page.goto(REPL_URL, { waitUntil: 'networkidle2', timeout: 120000 });
+                await sleep(25000); // Give Replit extra time to load
+
+                // Startup force restart
+                console.log('🚀 Monitor Active. Executing Startup Force Click...');
+                await forceRestartAction(page);
+
+                return true;
             } catch (e) {
                 console.error("Load failed, retrying...", e.message);
                 await sleep(10000);
@@ -118,13 +144,29 @@ async function startBrowser() {
 
         await loadAndInject();
 
-        // 5-Minute Memory Maintenance
+        // Monitor loop - check every 5 seconds if stopped
+        const monitorInterval = setInterval(async () => {
+            try {
+                const isStopped = await isButtonStopped(page);
+                if (isStopped) {
+                    console.log('▶️ State: Stopped. Auto-restarting...');
+                    await findAndClickButton(page);
+                }
+            } catch (e) {
+                console.error('Monitor error:', e.message);
+            }
+        }, 5000);
+
+        // Force restart every 50 minutes
+        const forceRestartInterval = setInterval(async () => {
+            await forceRestartAction(page);
+        }, 50 * 60 * 1000);
+
+        // Memory cleanup every 5 minutes
         setInterval(async () => {
             console.log("🔄 Cleaning Page Memory (5m Refresh)...");
-            await page.evaluate(() => {
-                clearInterval(window.replitMonitor);
-                clearInterval(window.forceRestartTimer);
-            });
+            clearInterval(monitorInterval);
+            clearInterval(forceRestartInterval);
             await loadAndInject();
         }, 300000);
 

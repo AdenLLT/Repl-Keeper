@@ -16,11 +16,9 @@ function findChrome() {
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 async function startBrowser() {
+    console.log("Starting browser...");
     const userDataDir = path.join(__dirname, 'chrome_user_data');
     const cookiesPath = path.join(__dirname, 'replit_cookies.json');
-    const REPL_URL = 'https://replit.com/@HUDV1/mb#main.py';
-
-    console.log("Starting browser session...");
     let browser = null;
 
     try {
@@ -29,7 +27,7 @@ async function startBrowser() {
             headless: "new",
             executablePath: chromePath,
             userDataDir: userDataDir,
-            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-web-security']
         });
 
         const page = await browser.newPage();
@@ -43,137 +41,54 @@ async function startBrowser() {
             console.log(`✓ Cookies loaded`);
         }
 
-        // Helper function to find button in shadow DOM and click with Puppeteer
-        async function findAndClickButton(page) {
-            try {
-                const buttonHandle = await page.evaluateHandle(() => {
-                    const BUTTON_SELECTOR = 'button[data-cy="ws-run-btn"]';
+        console.log('⏳ Navigating to Workspace...');
+        // Increased timeout to 3 minutes because Replit is slow on Koyeb
+        await page.goto('https://replit.com/@HUDV1/mb#main.py', { waitUntil: 'networkidle2', timeout: 180000 });
 
-                    function findInShadow(selector, root = document) {
-                        const el = root.querySelector(selector);
-                        if (el) return el;
-                        const all = root.querySelectorAll('*');
-                        for (const node of all) {
-                            if (node.shadowRoot) {
-                                const found = findInShadow(selector, node.shadowRoot);
-                                if (found) return found;
-                            }
-                        }
-                        return null;
+        console.log('⏳ Waiting 60s for full load...');
+        await sleep(60000);
+
+        await page.addScriptTag({
+            content: `
+            (function() {
+                console.log('🚀 Keeper v2.2 Active');
+                const RUN_SELECTOR = 'button[data-cy="ws-run-btn"]';
+                const PLAY_PATH = 'M20.593 10.91a1.25 1.25 0 0 1 0 2.18';
+
+                function findInShadow(sel, root = document) {
+                    let el = root.querySelector(sel);
+                    if (el) return [el];
+                    let found = [];
+                    root.querySelectorAll('*').forEach(node => {
+                        if (node.shadowRoot) found.push(...findInShadow(sel, node.shadowRoot));
+                    });
+                    return found;
+                }
+
+                setInterval(() => {
+                    const btn = findInShadow(RUN_SELECTOR)[0];
+                    if (btn && btn.innerHTML.includes(PLAY_PATH)) {
+                        console.log('▶️ Clicking Run');
+                        ['mousedown', 'mouseup', 'click'].forEach(t => 
+                            btn.dispatchEvent(new MouseEvent(t, {bubbles: true, view: window})));
+                    } else if (btn) {
+                        console.log('✅ Running...');
+                    } else {
+                        console.log('🔍 Searching...');
                     }
+                }, 10000);
+            })();`
+        });
 
-                    return findInShadow(BUTTON_SELECTOR);
-                });
+        console.log('✓ Script injected. Monitoring...');
 
-                const button = buttonHandle.asElement();
-                if (button) {
-                    await button.click();
-                    return true;
-                }
-                return false;
-            } catch (e) {
-                console.error('Click error:', e.message);
-                return false;
-            }
-        }
-
-        // Helper to check if button shows "stopped" state (play icon)
-        async function isButtonStopped(page) {
-            return await page.evaluate(() => {
-                const RUN_ICON_DATA = 'M20.593 10.91a1.25 1.25 0 0 1 0 2.18l-14.48 8.145a1.25 1.25 0 0 1-1.863-1.09V3.855a1.25 1.25 0 0 1 1.863-1.09l14.48 8.146Z';
-                const BUTTON_SELECTOR = 'button[data-cy="ws-run-btn"]';
-
-                function findInShadow(selector, root = document) {
-                    const el = root.querySelector(selector);
-                    if (el) return el;
-                    const all = root.querySelectorAll('*');
-                    for (const node of all) {
-                        if (node.shadowRoot) {
-                            const found = findInShadow(selector, node.shadowRoot);
-                            if (found) return found;
-                        }
-                    }
-                    return null;
-                }
-
-                const button = findInShadow(BUTTON_SELECTOR);
-                if (button) {
-                    const iconPath = button.querySelector('svg path');
-                    if (iconPath && iconPath.getAttribute('d') === RUN_ICON_DATA) {
-                        return true;
-                    }
-                }
-                return false;
-            });
-        }
-
-        async function forceRestartAction(page) {
-            console.log('🔄 FORCE RESTART TRIGGERED: Clicking STOP/RUN sequence...');
-
-            // First click - stop if running, or start if stopped
-            const clicked1 = await findAndClickButton(page);
-            if (!clicked1) {
-                console.log('⚠️ Force restart failed: Button not found.');
-                return;
-            }
-
-            await sleep(4000);
-
-            // Second click - ensure it's running
-            console.log('🔄 FORCE RESTART: Clicking RUN again...');
-            await findAndClickButton(page);
-        }
-
-        async function loadAndInject() {
-            console.log(`⏳ Loading Replit Workspace...`);
-            try {
-                await page.goto(REPL_URL, { waitUntil: 'networkidle2', timeout: 120000 });
-                await sleep(25000); // Give Replit extra time to load
-
-                // Startup force restart
-                console.log('🚀 Monitor Active. Executing Startup Force Click...');
-                await forceRestartAction(page);
-
-                return true;
-            } catch (e) {
-                console.error("Load failed, retrying...", e.message);
-                await sleep(10000);
-                return loadAndInject();
-            }
-        }
-
-        await loadAndInject();
-
-        // Monitor loop - check every 5 seconds if stopped
-        const monitorInterval = setInterval(async () => {
-            try {
-                const isStopped = await isButtonStopped(page);
-                if (isStopped) {
-                    console.log('▶️ State: Stopped. Auto-restarting...');
-                    await findAndClickButton(page);
-                }
-            } catch (e) {
-                console.error('Monitor error:', e.message);
-            }
-        }, 5000);
-
-        // Force restart every 50 minutes
-        const forceRestartInterval = setInterval(async () => {
-            await forceRestartAction(page);
-        }, 50 * 60 * 1000);
-
-        // Memory cleanup every 5 minutes
-        setInterval(async () => {
-            console.log("🔄 Cleaning Page Memory (5m Refresh)...");
-            clearInterval(monitorInterval);
-            clearInterval(forceRestartInterval);
-            await loadAndInject();
-        }, 300000);
+        // Just stay alive - let the browser handle its own persistence
+        await new Promise(() => {});
 
     } catch (err) {
-        console.error("❌ Fatal Error:", err.message);
+        console.error("❌ Error:", err.message);
         if (browser) await browser.close();
-        setTimeout(startBrowser, 5000);
+        setTimeout(startBrowser, 10000);
     }
 }
 

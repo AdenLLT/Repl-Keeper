@@ -47,15 +47,14 @@ async function startBrowser() {
             console.log(`⏳ Loading Replit Workspace...`);
             try {
                 await page.goto(REPL_URL, { waitUntil: 'networkidle2', timeout: 120000 });
-                await sleep(20000); // Wait for page to build
+                await sleep(25000); // Give Replit extra time to load the environment
 
                 await page.evaluate(() => {
-                    // --- Integrated Logic from your Tampermonkey script ---
                     const CHECK_INTERVAL_MS = 5000;
+                    const FORCE_INTERVAL_MS = 50 * 60 * 1000; // 50 Minutes
                     const BUTTON_SELECTOR = 'button[data-cy="ws-run-btn"]';
-                    const RUN_ICON_PATH_DATA = 'M20.593 10.91a1.25 1.25 0 0 1 0 2.18l-14.48 8.145a1.25 1.25 0 0 1-1.863-1.09V3.855a1.25 1.25 0 0 1 1.863-1.09l14.48 8.146Z';
+                    const RUN_ICON_DATA = 'M20.593 10.91a1.25 1.25 0 0 1 0 2.18l-14.48 8.145a1.25 1.25 0 0 1-1.863-1.09V3.855a1.25 1.25 0 0 1 1.863-1.09l14.48 8.146Z';
 
-                    // Helper to find elements inside nested Shadow DOMs
                     function findInShadow(selector, root = document) {
                         const el = root.querySelector(selector);
                         if (el) return el;
@@ -69,35 +68,47 @@ async function startBrowser() {
                         return null;
                     }
 
-                    const simulateMouseClick = (element) => {
+                    const clickBtn = (element) => {
                         ['mousedown', 'mouseup', 'click'].forEach(type => {
-                            element.dispatchEvent(new MouseEvent(type, {
-                                bubbles: true,
-                                cancelable: true,
-                                view: window
-                            }));
+                            element.dispatchEvent(new MouseEvent(type, { bubbles: true, view: window }));
                         });
                     };
 
+                    const forceRestartAction = () => {
+                        const button = findInShadow(BUTTON_SELECTOR);
+                        if (button) {
+                            console.log('🔄 FORCE RESTART TRIGGERED: Clicking STOP/RUN sequence...');
+                            clickBtn(button); // Click 1: Stop (or Start if it was off)
+
+                            setTimeout(() => {
+                                console.log('🔄 FORCE RESTART: Clicking RUN again...');
+                                clickBtn(button); // Click 2: Ensure it is Start
+                            }, 4000);
+                        } else {
+                            console.log('⚠️ Force restart failed: Button not found.');
+                        }
+                    };
+
+                    // 1. MONITORING LOOP (Standard Auto-Restart if crashed)
                     window.replitMonitor = setInterval(() => {
                         const button = findInShadow(BUTTON_SELECTOR);
-
                         if (button) {
                             const iconPath = button.querySelector('svg path');
-                            if (iconPath && iconPath.getAttribute('d') === RUN_ICON_PATH_DATA) {
-                                simulateMouseClick(button);
-                                console.log('▶️ Found RUN icon. Clicking now.');
-                            } else {
-                                console.log('✅ Button found, but app is already running.');
+                            if (iconPath && iconPath.getAttribute('d') === RUN_ICON_DATA) {
+                                console.log('▶️ State: Stopped. Auto-restarting...');
+                                clickBtn(button);
                             }
-                        } else {
-                            console.log('🔍 Button component not found in DOM or ShadowDOM.');
                         }
                     }, CHECK_INTERVAL_MS);
 
-                    console.log('🚀 Replit Auto-Run Monitor Started (5s interval)');
-                });
+                    // 2. SCHEDULED FORCE RESTART (Every 50 Minutes)
+                    window.forceRestartTimer = setInterval(forceRestartAction, FORCE_INTERVAL_MS);
 
+                    // 3. STARTUP FORCE RESTART (Click immediately on load)
+                    console.log('🚀 Monitor Active. Executing Startup Force Click...');
+                    forceRestartAction();
+
+                });
             } catch (e) {
                 console.error("Load failed, retrying...", e.message);
                 await sleep(10000);
@@ -107,11 +118,13 @@ async function startBrowser() {
 
         await loadAndInject();
 
-        // 5-Minute Refresh Logic (as requested in your script)
+        // 5-Minute Memory Maintenance
         setInterval(async () => {
-            console.log("🔄 5-Minute Refresh Triggered...");
-            // Clear the old interval inside the browser before reloading
-            await page.evaluate(() => clearInterval(window.replitMonitor));
+            console.log("🔄 Cleaning Page Memory (5m Refresh)...");
+            await page.evaluate(() => {
+                clearInterval(window.replitMonitor);
+                clearInterval(window.forceRestartTimer);
+            });
             await loadAndInject();
         }, 300000);
 

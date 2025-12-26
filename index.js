@@ -56,7 +56,7 @@ async function startBrowser() {
                     (function() {
                         console.log('🚀 Keeper v2.3: Monitoring Started');
                         const RUN_SELECTOR = 'button[data-cy="ws-run-btn"]';
-                        const PLAY_PATH = 'M20.593 10.91a1.25 1.25 0 0 1 0 2.18';
+                        const PLAY_PATH = 'M20.593 10.91a1.25 1.25 0 0 1 0 2.18l-14.48 8.145a1.25 1.25 0 0 1-1.863-1.09V3.855a1.25 1.25 0 0 1 1.863-1.09l14.48 8.146Z';
 
                         function findInShadow(sel, root = document) {
                             let el = root.querySelector(sel);

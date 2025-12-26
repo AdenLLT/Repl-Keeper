@@ -19,7 +19,6 @@ async function startBrowser() {
     const userDataDir = path.join(__dirname, 'chrome_user_data');
     const cookiesPath = path.join(__dirname, 'replit_cookies.json');
     const REPL_URL = 'https://replit.com/@HUDV1/mb#main.py';
-    const RELOAD_INTERVAL = 60 * 60 * 1000; // Reload every 60 minutes
 
     console.log("Starting browser session...");
     let browser = null;
@@ -36,7 +35,6 @@ async function startBrowser() {
         const page = await browser.newPage();
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
-        // Pass browser logs to terminal
         page.on('console', msg => console.log(`[BROWSER] ${msg.text()}`));
 
         if (fs.existsSync(cookiesPath)) {
@@ -49,65 +47,78 @@ async function startBrowser() {
             console.log(`⏳ Loading Replit Workspace...`);
             try {
                 await page.goto(REPL_URL, { waitUntil: 'networkidle2', timeout: 120000 });
-                await sleep(30000); // Wait for hydration
+                await sleep(20000); // Wait for page to build
 
-                await page.addScriptTag({
-                    content: `
-                    (function() {
-                        console.log('🚀 Keeper v2.3: Monitoring Started');
-                        const RUN_SELECTOR = 'button[data-cy="ws-run-btn"]';
-                        const PLAY_PATH = 'M20.593 10.91a1.25 1.25 0 0 1 0 2.18l-14.48 8.145a1.25 1.25 0 0 1-1.863-1.09V3.855a1.25 1.25 0 0 1 1.863-1.09l14.48 8.146Z';
+                await page.evaluate(() => {
+                    // --- Integrated Logic from your Tampermonkey script ---
+                    const CHECK_INTERVAL_MS = 5000;
+                    const BUTTON_SELECTOR = 'button[data-cy="ws-run-btn"]';
+                    const RUN_ICON_PATH_DATA = 'M20.593 10.91a1.25 1.25 0 0 1 0 2.18l-14.48 8.145a1.25 1.25 0 0 1-1.863-1.09V3.855a1.25 1.25 0 0 1 1.863-1.09l14.48 8.146Z';
 
-                        function findInShadow(sel, root = document) {
-                            let el = root.querySelector(sel);
-                            if (el) return [el];
-                            let found = [];
-                            root.querySelectorAll('*').forEach(node => {
-                                if (node.shadowRoot) found.push(...findInShadow(sel, node.shadowRoot));
-                            });
-                            return found;
-                        }
-
-                        setInterval(() => {
-                            const btn = findInShadow(RUN_SELECTOR)[0];
-                            if (btn) {
-                                if (btn.innerHTML.includes(PLAY_PATH)) {
-                                    console.log('▶️ Clicked Run');
-                                    ['mousedown', 'mouseup', 'click'].forEach(t => 
-                                        btn.dispatchEvent(new MouseEvent(t, {bubbles: true, view: window})));
-                                } else {
-                                    console.log('✅ App Running');
-                                }
-                            } else {
-                                console.log('🔍 Searching for button...');
+                    // Helper to find elements inside nested Shadow DOMs
+                    function findInShadow(selector, root = document) {
+                        const el = root.querySelector(selector);
+                        if (el) return el;
+                        const all = root.querySelectorAll('*');
+                        for (const node of all) {
+                            if (node.shadowRoot) {
+                                const found = findInShadow(selector, node.shadowRoot);
+                                if (found) return found;
                             }
-                        }, 15000);
-                    })();`
+                        }
+                        return null;
+                    }
+
+                    const simulateMouseClick = (element) => {
+                        ['mousedown', 'mouseup', 'click'].forEach(type => {
+                            element.dispatchEvent(new MouseEvent(type, {
+                                bubbles: true,
+                                cancelable: true,
+                                view: window
+                            }));
+                        });
+                    };
+
+                    window.replitMonitor = setInterval(() => {
+                        const button = findInShadow(BUTTON_SELECTOR);
+
+                        if (button) {
+                            const iconPath = button.querySelector('svg path');
+                            if (iconPath && iconPath.getAttribute('d') === RUN_ICON_PATH_DATA) {
+                                simulateMouseClick(button);
+                                console.log('▶️ Found RUN icon. Clicking now.');
+                            } else {
+                                console.log('✅ Button found, but app is already running.');
+                            }
+                        } else {
+                            console.log('🔍 Button component not found in DOM or ShadowDOM.');
+                        }
+                    }, CHECK_INTERVAL_MS);
+
+                    console.log('🚀 Replit Auto-Run Monitor Started (5s interval)');
                 });
-                console.log('✓ Script injected successfully.');
+
             } catch (e) {
-                console.error("Load failed, retrying in 30s...", e.message);
-                await sleep(30000);
+                console.error("Load failed, retrying...", e.message);
+                await sleep(10000);
                 return loadAndInject();
             }
         }
 
-        // Initial Load
         await loadAndInject();
 
-        // Periodically refresh the page to prevent WebSocket/Memory death
+        // 5-Minute Refresh Logic (as requested in your script)
         setInterval(async () => {
-            console.log("🔄 Performing scheduled 60-minute refresh...");
+            console.log("🔄 5-Minute Refresh Triggered...");
+            // Clear the old interval inside the browser before reloading
+            await page.evaluate(() => clearInterval(window.replitMonitor));
             await loadAndInject();
-        }, RELOAD_INTERVAL);
-
-        // Keep process alive
-        await new Promise(() => {});
+        }, 300000);
 
     } catch (err) {
         console.error("❌ Fatal Error:", err.message);
         if (browser) await browser.close();
-        setTimeout(startBrowser, 10000); // Restart entire browser on crash
+        setTimeout(startBrowser, 5000);
     }
 }
 
